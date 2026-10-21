@@ -1,0 +1,27 @@
+# Validation record
+
+Implementation environment: Linux source sandbox, **2026-10-21**.
+
+## Performed
+- Inspected all initial repository files: README and Unity `.gitignore` only; no existing project/scripts/scenes.
+- Confirmed working branch `arena/d61c4a65-veilbreak` and initially clean status.
+- Reviewed each supplied image: protagonist, UI flows, enemy designs, and arena/map references. No binary concept files were copied into the game or misrepresented as models.
+- Added Unity 6 version pin, package manifest, legacy input axes, runtime/editor/test assembly boundaries and stable `.meta` GUIDs.
+- Parsed all C# source files with Tree-sitter C#; no syntax errors detected.
+- Checked JSON manifests/assembly definitions, linker XML, file/class names and unique metadata GUIDs using `Tools/validate_source.py`.
+- Reviewed initialization order: Health/CharacterControllers are created before actor components; dependencies wired before initialization; the HUD subscribes after core setup and reads current state explicitly.
+- Reviewed state flow: non-playing states freeze simulation; outcomes trigger once via health death event; restart clears pending melee, dodge, shift cooldown, guardian timers, visuals, camera, health and state without spawning replacements.
+- Reviewed native input routing: joystick/look pointer ownership, action buttons as separate raycast targets, mobile-only look raycast surface to avoid blocking desktop LMB on empty screen, safe-area adaptation, state-transition input clearing.
+- Reviewed genuine reality effects: gates/platforms switch entire objects including colliders; capsule penetration tests inspect incoming inactive geometry; support checks reject unsupported shifts; core armor/damage and palette change together.
+- Cross-checked URP asset creation and configurable rendering-property signatures against Unity-Technologies/Graphics `6000.0/staging` source through GitHub; replaced an internal-only property setter with serialized Editor configuration. This is API source review, **not compilation**.
+- Checked whitespace errors and repository contents for unintended generated assets/caches.
+
+## Added but NOT executed
+- EditMode: health lifecycle; inactive destination geometry rejection; support rejection/acceptance; reactive collider presence.
+- PlayMode: full bootstrap and title/pause/outcome transitions; repeated reset; cooldown behavior; exposed-core multiplier.
+- Manual Editor/mobile acceptance checklist in `Development.md`.
+
+## Unavailable / not claimed
+No Unity executable, C# compiler with Unity reference assemblies, Android toolchain or physical device was available. Therefore **Unity compilation, Unity scene generation, Unity Test Runner, Play Mode, Android build/install, real multi-touch, visual quality, combat balance, and performance are unverified**. Scene and URP assets must be generated with the documented Editor menu before playing/building. There is no fabricated scene YAML, build artifact or performance result.
+
+The source implements the requested encounter paths, but milestone acceptance in a running game remains pending Unity import, the included tests, manual playthrough, and Android device checks. No push or commit was needed to preserve the working-branch source changes.
