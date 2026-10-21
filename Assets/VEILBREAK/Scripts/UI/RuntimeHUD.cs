@@ -109,7 +109,7 @@ namespace Veilbreak
             // A 2.6 s tutorial/shift message must not hide a 1.3 s attack warning.
             hint.text = Game.Guardian.State == GuardianAI.Phase.Telegraph ? Game.Guardian.AttackName :
                 Time.unscaledTime <= messageUntil ? message :
-                broken ? "CORE EXPOSED — attack during recovery" : "SHIFT to expose the guardian's core";
+                ""; // No persistent AI/status commentary over the playfield. Warnings/rejections are transient.
             flash.color = new Color(1, .06f, .1f, Mathf.Clamp01((flashUntil - Time.unscaledTime) * 4) * .3f);
         }
         RectTransform Rect(string name, Transform parent, Vector2 min, Vector2 max, Vector2 lo, Vector2 hi)
