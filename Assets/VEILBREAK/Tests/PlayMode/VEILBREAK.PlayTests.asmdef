@@ -1,1 +1,1 @@
-{"name":"VEILBREAK.PlayTests","references":["VEILBREAK.Runtime"],"optionalUnityReferences":["TestAssemblies"]}
+{"name":"VEILBREAK.PlayTests","references":["VEILBREAK.Runtime","UnityEngine.UI"],"optionalUnityReferences":["TestAssemblies"]}

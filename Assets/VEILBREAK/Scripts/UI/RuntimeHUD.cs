@@ -12,6 +12,7 @@ namespace Veilbreak
         GameObject gameplay, modal, resume;
         Text healthLabel, bossLabel, realityLabel, shiftLabel, hint, heading, description, playLabel;
         Image healthFill, bossFill, flash;
+        string message;
         float messageUntil, flashUntil, previousHealth;
         Font font;
         Sprite whiteSprite;
@@ -31,7 +32,8 @@ namespace Veilbreak
             RectTransform g = (RectTransform)gameplay.transform;
             var look = Image("Camera drag", g, new Vector2(.42f, 0), Vector2.one, Vector2.zero, Vector2.zero, Color.clear, true);
             look.raycastTarget = Application.isMobilePlatform; // Do not swallow desktop LMB attacks on empty screen.
-            look.gameObject.AddComponent<TouchLookArea>().InputSource = InputSource;
+            var lookArea = look.gameObject.AddComponent<TouchLookArea>();
+            lookArea.InputSource = InputSource; InputSource.LookArea = lookArea;
             var playerBar = Bar(g, new Vector2(0, 1), new Vector2(190, -55), new Vector2(300, 24), Cyan, out healthFill);
             healthLabel = Label("Player health", playerBar, "", 19, new Vector2(.5f, .5f), new Vector2(0, 30), new Vector2(300, 30));
             var bossBar = Bar(g, new Vector2(.5f, 1), new Vector2(0, -55), new Vector2(460, 22), new Color(1, .28f, .37f), out bossFill);
@@ -78,7 +80,11 @@ namespace Veilbreak
             if (Game.Player.Health.Current < previousHealth) flashUntil = Time.unscaledTime + .25f;
             previousHealth = Game.Player.Health.Current;
         }
-        void Message(string value) { hint.text = value; messageUntil = Time.unscaledTime + 2.6f; }
+        void Message(string value)
+        {
+            message = value; messageUntil = Time.unscaledTime + 2.6f;
+            hint.text = Game.Guardian.State == GuardianAI.Phase.Telegraph ? Game.Guardian.AttackName : value;
+        }
         void OnState(ArenaState state)
         {
             gameplay.SetActive(state == ArenaState.Playing); modal.SetActive(state != ArenaState.Playing);
@@ -100,9 +106,10 @@ namespace Veilbreak
             realityLabel.text = broken ? "BROKEN VEIL" : "LIVING VEIL";
             realityLabel.color = broken ? new Color(.8f, .4f, 1) : Cyan;
             shiftLabel.text = Game.Veil.CooldownRemaining > 0 ? $"SHIFT\n{Game.Veil.CooldownRemaining:0.0}s" : "SHIFT\nREADY";
-            if (Time.unscaledTime > messageUntil)
-                hint.text = Game.Guardian.State == GuardianAI.Phase.Telegraph ? Game.Guardian.AttackName :
-                    broken ? "CORE EXPOSED — attack during recovery" : "SHIFT to expose the guardian's core";
+            // A 2.6 s tutorial/shift message must not hide a 1.3 s attack warning.
+            hint.text = Game.Guardian.State == GuardianAI.Phase.Telegraph ? Game.Guardian.AttackName :
+                Time.unscaledTime <= messageUntil ? message :
+                broken ? "CORE EXPOSED — attack during recovery" : "SHIFT to expose the guardian's core";
             flash.color = new Color(1, .06f, .1f, Mathf.Clamp01((flashUntil - Time.unscaledTime) * 4) * .3f);
         }
         RectTransform Rect(string name, Transform parent, Vector2 min, Vector2 max, Vector2 lo, Vector2 hi)

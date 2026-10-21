@@ -5,6 +5,7 @@ Optional syntax parser: pip install tree-sitter tree-sitter-c-sharp
 import json
 from pathlib import Path
 import re
+import subprocess
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,8 +13,14 @@ errors = []
 files = sorted((ROOT / 'Assets').rglob('*.cs'))
 for path in (ROOT / 'Packages').glob('*.json'):
     json.loads(path.read_text())
-for path in (ROOT / 'Assets').rglob('*.asmdef'):
-    json.loads(path.read_text())
+assemblies = {path: json.loads(path.read_text()) for path in (ROOT / 'Assets').rglob('*.asmdef')}
+local_names = {value['name'] for value in assemblies.values()}
+# Verified package assembly names (not package IDs). Keep this map current when adding dependencies.
+package_assemblies = {'UnityEngine.UI', 'Unity.RenderPipelines.Universal.Runtime', 'Unity.RenderPipelines.Core.Runtime'}
+for path, definition in assemblies.items():
+    for reference in definition.get('references', []):
+        if reference not in local_names | package_assemblies:
+            errors.append(f'Unknown assembly reference {reference}: {path.relative_to(ROOT)}')
 ET.parse(ROOT / 'Assets/VEILBREAK/link.xml')
 try:
     import tree_sitter_c_sharp
@@ -39,8 +46,11 @@ for path in (ROOT / 'Assets').rglob('*.meta'):
     if not match: errors.append(f'Invalid GUID: {path}')
     else: guids.append(match[1])
 if len(guids) != len(set(guids)): errors.append('Duplicate meta GUID')
-for banned in ('Library', 'Temp', 'Obj', 'Logs', 'node_modules'):
-    if (ROOT / banned).exists(): errors.append(f'Unexpected generated directory: {banned}')
+# Local ignored caches are expected after opening Unity; only tracked caches are a repository error.
+tracked = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
+for path in tracked:
+    if path.split('/')[0].lower() in ('library', 'temp', 'obj', 'logs', 'node_modules'):
+        errors.append(f'Tracked generated cache: {path}')
 if errors:
     raise SystemExit('\n'.join(errors))
 print(f'PASS: {len(files)} C# files checked; JSON/XML valid; {len(guids)} unique Unity asset GUIDs.')

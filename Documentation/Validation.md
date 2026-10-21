@@ -25,3 +25,8 @@ Implementation environment: Linux source sandbox, **2026-10-21**.
 No Unity executable, C# compiler with Unity reference assemblies, Android toolchain or physical device was available. Therefore **Unity compilation, Unity scene generation, Unity Test Runner, Play Mode, Android build/install, real multi-touch, visual quality, combat balance, and performance are unverified**. Scene and URP assets must be generated with the documented Editor menu before playing/building. There is no fabricated scene YAML, build artifact or performance result.
 
 The source implements the requested encounter paths, but milestone acceptance in a running game remains pending Unity import, the included tests, manual playthrough, and Android device checks. No push or commit was needed to preserve the working-branch source changes.
+
+## Post-merge repair audit — 2026-10-21
+The sections above record PR #1's initial source-only validation, not a successful Unity run. A follow-up audit on `arena/b0e1f861-veilbreak` found and repaired the unresolved UI assembly name, camera-pointer cleanup, warning-text priority and generator failure/recovery paths. See [PostMergeAudit.md](PostMergeAudit.md) for exact evidence, comparison with the 78-file attachment, changed behavior and remaining checks.
+
+Current executed results: Tree-sitter syntax parsing for 21 C# files; JSON/XML/reference-name/metadata checks with 43 unique GUIDs; four Python validator regressions; whitespace checks. Unity compilation, scene generation, Unity tests, Play Mode and Android/device checks remain **not executed**. Test sources were expanded; their presence is not a passing Unity Test Runner result.

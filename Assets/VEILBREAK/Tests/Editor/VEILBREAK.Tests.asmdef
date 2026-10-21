@@ -1,1 +1,1 @@
-{"name":"VEILBREAK.Tests","references":["VEILBREAK.Runtime"],"includePlatforms":["Editor"],"optionalUnityReferences":["TestAssemblies"]}
+{"name":"VEILBREAK.Tests","references":["VEILBREAK.Runtime","UnityEngine.UI"],"includePlatforms":["Editor"],"optionalUnityReferences":["TestAssemblies"]}

@@ -1,1 +1,1 @@
-{"name":"VEILBREAK.Runtime","rootNamespace":"Veilbreak","references":["Unity.ugui"],"autoReferenced":true}
+{"name":"VEILBREAK.Runtime","rootNamespace":"Veilbreak","references":["UnityEngine.UI"],"autoReferenced":true}

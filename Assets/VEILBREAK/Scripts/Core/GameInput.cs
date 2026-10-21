@@ -7,6 +7,7 @@ namespace Veilbreak
     public sealed class GameInput : MonoBehaviour
     {
         public VirtualJoystick Joystick { private get; set; }
+        public TouchLookArea LookArea { private get; set; }
         Vector2 look;
         bool attack, dodge, shift;
         public Vector2 Move => Vector2.ClampMagnitude((Joystick ? Joystick.Value : Vector2.zero) +
@@ -32,6 +33,6 @@ namespace Veilbreak
         public bool ConsumeDodge() { bool v = dodge || Input.GetKeyDown(KeyCode.Space); dodge = false; return v; }
         public bool ConsumeShift() { bool v = shift || Input.GetKeyDown(KeyCode.Q); shift = false; return v; }
         void OnApplicationFocus(bool focused) { if (!focused) Clear(); }
-        public void Clear() { attack = dodge = shift = false; look = Vector2.zero; if (Joystick) Joystick.ResetInput(); }
+        public void Clear() { attack = dodge = shift = false; look = Vector2.zero; if (Joystick) Joystick.ResetInput(); if (LookArea) LookArea.ResetInput(); }
     }
 }
