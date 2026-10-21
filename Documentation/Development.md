@@ -22,13 +22,14 @@ The project uses the built-in legacy Input Manager, not the new Input System pac
 python3 -m venv .venv
 .venv/bin/pip install tree-sitter tree-sitter-c-sharp
 .venv/bin/python Tools/validate_source.py
+.venv/bin/python -m unittest discover -s Tools -p 'test_*.py' -v
 ```
-The parser packages are developer-only and are not game dependencies. Without them the checker explicitly skips C# syntax parsing. It also checks JSON/XML, script/class names and stable unique meta GUIDs. It does not typecheck Unity APIs or execute physics/gameplay. Unity will generate its own machine-specific settings and package lock on first open; review and retain essential project/package configuration after validating in the Editor.
+The parser packages are developer-only and are not game dependencies. Without them the checker explicitly skips C# syntax parsing. It also checks JSON/XML, script/class names, known local/package assembly references and stable unique meta GUIDs. Package assembly names are explicitly mapped (for example UnityEngine.UI, not the package ID). Ignored local Unity caches are allowed; tracked cache files are rejected. Four Python regressions cover the validator itself, not the game. It does not typecheck Unity APIs or execute physics/gameplay. Unity will generate its own machine-specific settings and package lock on first open; review and retain essential project/package configuration after validating in the Editor.
 
 ## Unity tests
 Generate the scene/configuration first, exit Play Mode, then open **Window → General → Test Runner**:
-- **EditMode → Run All:** health clamp/reset/death events, destination penetration rejection against inactive geometry, shared-floor support vs unsupported shift, reactive presence/collider activation.
-- **PlayMode → Run All:** runtime construction, title/play/pause/win/lose/title transitions, repeated same-instance reset, shift cooldown reset and enforcement, and higher exposed-core damage.
+- **EditMode → Run All:** camera-pointer ownership and input clearing, health clamp/reset/death events, destination penetration rejection against inactive geometry, shared-floor support vs unsupported shift, reactive presence/collider activation.
+- **PlayMode → Run All:** shift position/object presence and warning-text priority, runtime construction, title/play/pause/win/lose/title transitions, repeated same-instance reset, shift cooldown reset and enforcement, and higher exposed-core damage.
 
 For batch testing use your local Unity executable (platform-specific path):
 ```
@@ -53,3 +54,11 @@ Create `Logs/` first. Do not use `-quit` with `-runTests`; allow the test runner
 
 ## Remaining engineering verification
 Compilation/import and on-device behavior must be established using Unity, not this source checker. If Unity reports an API/package issue, capture the first compiler error and resolve it before generating/building. Tune attack readability, encounter balance, camera framing and actual touch ergonomics in Play Mode; procedural layout proportions are initial values, not a tested level-design result.
+
+## Generator repair checks (Unity required; not executed in the source sandbox)
+1. Generate twice outside Play Mode. Verify one bootstrap in the scene, one VeilArena build entry in position zero, and one pipeline/renderer asset at each documented path. Existing unrelated build entries should remain.
+2. Record the scene/pipeline/renderer GUIDs and the active quality level before regenerating. GUIDs and active quality selection should remain stable. Both assets should be assigned for every quality level.
+3. In a disposable clone, delete only `VeilMobileRenderer.asset` via Unity and regenerate. Confirm the renderer is recreated, pipeline renderer slot zero repaired and the scene still plays. Likewise delete only the pipeline and regenerate: the surviving renderer must be reused.
+4. Enter Play Mode: Generate Veil Arena must be disabled. Try a conflicting layer-8 name in a disposable clone: generation should fail clearly without renaming the layer or replacing the scene.
+5. Ensure generation reports success only after the scene actually saves. Check that the Android Build Profile uses the global scene list, or manually add VeilArena to a profile with a scene-list override.
+6. Start combat and shift during a telegraph: the boss warning should remain readable rather than being replaced by the shift/tutorial message. Temporarily lose app focus while dragging the camera, then try a new finger after returning/resuming; input must not remain owned by the vanished finger.
