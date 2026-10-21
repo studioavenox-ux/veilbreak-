@@ -43,6 +43,35 @@ namespace Veilbreak.Tests
             reactive.Apply(VeilState.Living); Assert.IsFalse(obstruction.activeInHierarchy);
             reactive.Apply(VeilState.Broken); Assert.IsTrue(obstruction.activeInHierarchy); Assert.IsTrue(obstruction.GetComponent<Collider>().enabled);
         }
+        [Test] public void NonFiniteHealthInputsDoNotPoisonState()
+        {
+            player = new GameObject("finite health"); var health = player.AddComponent<HealthComponent>();
+            health.Configure(float.NaN); Assert.AreEqual(100, health.Maximum);
+            health.Damage(float.PositiveInfinity); health.Damage(float.NaN);
+            Assert.AreEqual(100, health.Current); Assert.IsFalse(health.IsDead);
+            health.Configure(float.NegativeInfinity); Assert.AreEqual(100, health.Current);
+        }
+        [Test] public void OccupancyRejectsGuardianSizedCapsuleAndIgnoresDisabledColliders()
+        {
+            var validator = SetupSafety(); var body = player.GetComponent<CharacterController>();
+            body.height = 4.7f; body.center = Vector3.up*2.35f; body.radius = 1.15f;
+            obstruction = GameObject.CreatePrimitive(PrimitiveType.Cube); obstruction.transform.position = Vector3.up;
+            var reactive = obstruction.AddComponent<VeilReactiveObject>(); reactive.ActiveState = VeilState.Broken;
+            obstruction.SetActive(false); Physics.SyncTransforms();
+            Assert.IsFalse(validator.CanOccupy(body, new[] { reactive }, VeilState.Broken));
+            obstruction.GetComponent<Collider>().enabled = false;
+            Assert.IsTrue(validator.CanOccupy(body, new[] { reactive }, VeilState.Broken));
+        }
+        [Test] public void NavigatorFindsASidewaysRouteAroundCover()
+        {
+            SetupSafety(); obstruction = GameObject.CreatePrimitive(PrimitiveType.Cube); obstruction.layer = 8;
+            obstruction.transform.position = Vector3.up; obstruction.transform.localScale = new Vector3(1,2,6);
+            Physics.SyncTransforms();
+            var navigation = new ArenaNavigator(1.15f,4.7f);
+            Vector3 direction = navigation.Direction(new Vector3(-2,.06f,0), new Vector3(4,.06f,0), .5f);
+            Assert.Greater(direction.sqrMagnitude,.5f);
+            Assert.Less(Vector3.Dot(direction,Vector3.right),.5f, "Must route sideways instead of pushing directly into cover");
+        }
         ShiftSafetyValidator SetupSafety()
         {
             player = new GameObject("player"); var body = player.AddComponent<CharacterController>(); body.height = 1.8f; body.radius = .32f; body.center = Vector3.up * .9f;

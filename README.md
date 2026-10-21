@@ -1,6 +1,8 @@
 # VEILBREAK
 **AVENOX Games — Change Reality. Control the Fight.**
 
+**Verification status:** candidate source, not a certified playable release. Unity compilation, runtime tests and Android/device acceptance are still required; see [release gates](Documentation/ReleaseCandidate.md).
+
 A Unity 6 / URP foundation for a single-player, landscape Android third-person action game. The first encounter, **The Veil Arena**, is a compact ruined courtyard with one mechanical Veil Guardian. Shift between Living and Broken versions of the same space to open routes and expose the guardian's core.
 
 This is native Unity gameplay, not a web app. All character, enemy, and environment art is clearly identified procedural primitive placeholder geometry inspired by the four supplied concept boards. There are no imported models, rigs, animations, or pretend finished assets.
@@ -42,7 +44,7 @@ The joystick and camera each own a pointer ID; separate action buttons accept si
 - Broken Veil: dark violet atmosphere, right gate/platform active, visibly exposed core (2× base damage). The full level footprint and player position are preserved.
 - SHIFT: 1 s cooldown after success. A penetration check against incoming solid geometry and a support check reject unsafe changes with a HUD message. Losing a low step is safe because the permanent floor remains beneath it.
 - Guardian: 540 health. Alternates a 4.2 m ground slam and a 10 m forward energy lane. Orange geometry and HUD text warn for 1.3 s before damage resolves once. Dodge away or sideways, then attack in the 1.6 s recovery. Broken-core hits accumulate toward a recovery stagger.
-- Environmental cover blocks direct attack damage. No complex navigation system is present; lure the guardian back toward the clear center if it is caught on cover.
+- Environmental cover blocks direct attack damage. The guardian uses a small bounded, cached clearance grid to route around cover toward an in-range, visible attack position. It is specific to this flat courtyard, not an open-world navigation system.
 - Death of either combatant produces a real result state. Pause and results freeze simulation. Retry/replay restarts the existing instances and resets positions, health, reality objects, cooldowns, attack windows, camera view, and game flags. Return to Title is a same-scene menu equivalent.
 
 See [arena layout](Documentation/VeilArena.md), [shift rules](Documentation/RealityRules.md), [guardian behavior](Documentation/Guardian.md), and [development/testing](Documentation/Development.md).
@@ -50,8 +52,9 @@ See [arena layout](Documentation/VeilArena.md), [shift rules](Documentation/Real
 ## Android build
 1. Generate the scene first. Open **File → Build Profiles**, add/switch to **Android**, and include `VeilArena` (the generator enables it).
 2. Defaults: package `com.avenoxgames.veilbreak`, landscape-left, minimum Android API 26, ARM64, IL2CPP. Keep target API automatic or select the SDK required for your distribution. Confirm the identifier and signing policy before publishing.
-3. Use a Development Build for initial checks. Choose **Build** or **Build And Run** to your own ignored `Builds/Android/` directory. Device debugging/USB authorization must be configured locally.
-4. Test safe areas, simultaneous touch, thermal behavior, frame time, and memory on physical hardware. Profile before adjusting target frame rate, render scale, or shadows.
+3. With Android active, use **VEILBREAK → Build Android Development APK** for the repeatable single-scene build. It writes `Builds/Android/VEILBREAK-development.apk`, checks the build result and is unaffected by a profile scene-list override. This is an internal development candidate, not a store-signed release.
+4. Alternatively, use a Development Build for initial checks. Choose **Build** or **Build And Run** to your own ignored `Builds/Android/` directory. Device debugging/USB authorization must be configured locally.
+5. Test safe areas, simultaneous touch, thermal behavior, frame time, and memory on physical hardware. Profile before adjusting target frame rate, render scale, or shadows.
 
 URP defaults are modest: HDR off, 2× MSAA, one directional light, no additional-light shadows, 1024 main shadow map, 30 m shadow distance. No post-processing, particles, remote services, or per-attack spawning. The runtime uses 60 FPS as its cap; 30 FPS low-end / 60 FPS capable-device performance are **targets, not measured results**. Set the bootstrap target or lower render scale for device-specific trials.
 
@@ -60,7 +63,7 @@ URP defaults are modest: HDR off, 2× MSAA, one directional light, no additional
 
 **Not yet verified here:** Unity import/compilation, scene generation inside Unity, Play Mode behavior, Android build/install, real multi-touch, and performance. Unity Editor and Android hardware were unavailable in the implementation environment. Source syntax/static checks passed; this is **not** a claim that a Unity build passed. See [validation record](Documentation/Validation.md) and the [post-merge audit](Documentation/PostMergeAudit.md).
 
-**Known prototype limitations:** primitive art without skeletal locomotion/attack animation, simple camera obstruction retraction rather than a full occlusion solver, direct approach steering rather than NavMesh pathfinding, basic UI and instantaneous visual shift, no sound/haptics, no saved settings, no jump or platforming progression. The boss is scaled to approximately 5 m for readability in this compact arena, not the concept's 8–10 m. Runtime-built materials keep the URP Lit shader always included, which may increase initial shader build time/size; replace with authored materials/variant collection when art stabilizes.
+**Known prototype limitations:** primitive art without skeletal locomotion/attack animation, simple camera obstruction retraction rather than a full occlusion solver, flat-courtyard routing rather than general NavMesh pathfinding, basic UI and instantaneous visual shift, synthetic feedback tones rather than production audio, no haptics, no saved settings, no jump or platforming progression. The boss is scaled to approximately 5 m for readability in this compact arena, not the concept's 8–10 m. Runtime-built materials keep the URP Lit shader always included, which may increase initial shader build time/size; replace with authored materials/variant collection when art stabilizes.
 
 **Planned, not implemented:** production characters/rigs/VFX/audio, authored environment prefabs, device optimization and art pass. Other enemy concepts, campaigns, accounts, shops, multiplayer, inventories, and progression remain out of scope.
 
@@ -72,3 +75,12 @@ The compact courtyard now uses staggered stone tiles (combined into two cosmetic
 No assets are downloaded. A small shared URP material palette, two cached faceted meshes and two combined floor meshes are built once per scene and released with it. Restart reuses them. One directional light remains; no extra lights or post-processing were added. `SceneArtTests` adds pending PlayMode checks for actor/collider separation, mesh reuse, state scenery, fixed player cyan and restart material reuse. All existing gameplay/safety/lifecycle tests are unchanged.
 
 To inspect: use **VEILBREAK → Generate Veil Arena**, open `VeilArena`, enter Play and Start Encounter. Check silhouettes from the actual follow camera, clear combat paths, exposed-core visibility, shift rejection near incoming terraces/cover, and HUD/touch usability. Unity Editor/Play Mode, these Unity tests, Android builds and performance remain unverified in the source sandbox. The visual pass changes actual in-game mesh construction, not an image or mockup.
+
+## Encounter reliability / development-candidate pass
+- Dodge cancels pending melee hits, limits dodge travel to its configured duration even across a long frame, and reports its cooldown. Actor processing gives dodge a consistent update priority before combat.
+- SHIFT validates incoming geometry against **both** the player and Guardian. A blocked change consumes no cooldown and cannot teleport either actor.
+- The Guardian routes around cover toward an in-range position with sight; routes are invalidated after shifts/restart. Search uses fixed-size arrays and cached clearance, with no per-frame path allocations. Profile pathfinding spikes on Android before distribution.
+- Camera retraction/extension remains on the collision-checked ray. The sky uses the reality palette instead of depending on an unspecified default skybox.
+- Controls show immediate pressed feedback; dodge/shift show authoritative cooldowns. UI click checks use the current pointer position, narrow landscape layouts choose width-based scaling, focus loss pauses combat, and hidden menus do not retain keyboard selection.
+- Original generated sounds cue attack, hit, dodge, shift, warning and outcome. No external audio assets, licenses or dependencies. Clips/source are created once and cleaned up with the scene. They are deliberately simple, not a production soundscape.
+- The build entry point is `Veilbreak.Editor.AndroidBuild.BuildDevelopment`; see [exact commands and acceptance gates](Documentation/ReleaseCandidate.md). It does **not** run tests automatically or certify the APK on a device.
