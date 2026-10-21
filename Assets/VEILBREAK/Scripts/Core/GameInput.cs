@@ -8,6 +8,9 @@ namespace Veilbreak
     {
         public VirtualJoystick Joystick { private get; set; }
         public TouchLookArea LookArea { private get; set; }
+        readonly System.Collections.Generic.List<RaycastResult> uiHits = new System.Collections.Generic.List<RaycastResult>();
+        PointerEventData mousePointer;
+        EventSystem pointerSystem;
         Vector2 look;
         bool attack, dodge, shift;
         public Vector2 Move => Vector2.ClampMagnitude((Joystick ? Joystick.Value : Vector2.zero) +
@@ -27,8 +30,16 @@ namespace Veilbreak
         public bool ConsumeAttack()
         {
             bool value = attack || (!Application.isMobilePlatform && Input.GetMouseButtonDown(0) &&
-                !(EventSystem.current && EventSystem.current.IsPointerOverGameObject()));
+                !MouseOverUI());
             attack = false; return value;
+        }
+        bool MouseOverUI()
+        {
+            var system = EventSystem.current; if (!system) return false;
+            if (pointerSystem != system) { pointerSystem = system; mousePointer = new PointerEventData(system); }
+            // Query this frame's position; cached IsPointerOverGameObject can be stale before EventSystem.Update.
+            mousePointer.Reset(); mousePointer.position = Input.mousePosition;
+            uiHits.Clear(); system.RaycastAll(mousePointer, uiHits); return uiHits.Count > 0;
         }
         public bool ConsumeDodge() { bool v = dodge || Input.GetKeyDown(KeyCode.Space); dodge = false; return v; }
         public bool ConsumeShift() { bool v = shift || Input.GetKeyDown(KeyCode.Q); shift = false; return v; }

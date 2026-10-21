@@ -3,6 +3,7 @@ using UnityEngine;
 namespace Veilbreak
 {
     [RequireComponent(typeof(HealthComponent), typeof(CharacterController))]
+    [DisallowMultipleComponent]
     public sealed class GuardianAI : MonoBehaviour
     {
         public enum Phase { Observe, Approach, Telegraph, Attack, Recovery, Stagger, Defeated }
@@ -21,6 +22,9 @@ namespace Veilbreak
         public HealthComponent Health { get; private set; }
         public Phase State { get; private set; }
         public string AttackName => slam ? "GROUND SLAM — CLEAR THE RING" : "ENERGY STRIKE — DODGE SIDEWAYS";
+        public event System.Action AttackWarned;
+        bool initialized;
+        ArenaNavigator navigator;
         CharacterController body;
         float until, vertical, nextAttack, hitFlash, staggerMeter;
         bool slam = true;
@@ -29,12 +33,15 @@ namespace Veilbreak
         void Awake() { Health = GetComponent<HealthComponent>(); body = GetComponent<CharacterController>(); }
         public void Initialize()
         {
+            if (initialized) return;
+            initialized = true; navigator = new ArenaNavigator(body.radius, body.height);
             spawn = transform.position; spawnRotation = transform.rotation;
             Veil.Changed += OnVeil; Health.Died += OnDeath; ResetGuardian();
         }
         void OnDestroy() { if (Veil) Veil.Changed -= OnVeil; if (Health) Health.Died -= OnDeath; }
         void OnVeil(VeilState state)
         {
+            navigator?.Invalidate();
             ArmorPlate.gameObject.SetActive(state == VeilState.Living);
             Core.localScale = Vector3.one * (state == VeilState.Broken ? .85f : .5f);
         }
@@ -46,7 +53,7 @@ namespace Veilbreak
         }
         public void ReceiveHit(float damage)
         {
-            if (!Game.IsPlaying || Health.IsDead) return;
+            if (!Game.IsPlaying || Health.IsDead || damage <= 0 || float.IsNaN(damage) || float.IsInfinity(damage)) return;
             float actual = damage * (Veil.Current == VeilState.Broken ? brokenMultiplier : .65f);
             Health.Damage(actual); hitFlash = Time.time + .15f;
             staggerMeter += actual;
@@ -70,8 +77,9 @@ namespace Veilbreak
                     if (toPlayer.sqrMagnitude > .01f)
                         transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(toPlayer), 120 * Time.deltaTime);
                     float desired = slam ? 3.3f : 8;
-                    if (toPlayer.magnitude > desired) body.Move(toPlayer.normalized * approachSpeed * Time.deltaTime);
-                    else if (Time.time >= nextAttack) BeginAttack();
+                    if (toPlayer.magnitude <= desired && ArenaNavigator.HasSight(transform.position, Player.transform.position))
+                    { if (Time.time >= nextAttack) BeginAttack(); }
+                    else body.Move(navigator.Direction(transform.position, Player.transform.position, desired) * approachSpeed * Time.deltaTime);
                     break;
                 case Phase.Telegraph:
                     // Direction and origin are locked for the whole windup.
@@ -93,7 +101,7 @@ namespace Veilbreak
         {
             Vector3 to = Vector3.ProjectOnPlane(Player.transform.position - transform.position, Vector3.up);
             if (to.sqrMagnitude > .01f) transform.rotation = Quaternion.LookRotation(to);
-            Enter(Phase.Telegraph, windup); Telegraph.gameObject.SetActive(true);
+            Enter(Phase.Telegraph, windup); Telegraph.gameObject.SetActive(true); AttackWarned?.Invoke();
             Telegraph.localPosition = slam ? new Vector3(0, .025f, 0) : new Vector3(0, .025f, strikeRange * .5f);
             Telegraph.localScale = slam ? new Vector3(slamRadius * 2, .0125f, slamRadius * 2) : new Vector3(strikeHalfWidth * 2, .025f, strikeRange);
         }
@@ -109,6 +117,7 @@ namespace Veilbreak
         public void ResetGuardian()
         {
             body.enabled = false; transform.SetPositionAndRotation(spawn, spawnRotation); body.enabled = true;
+            navigator?.Invalidate();
             Health.ResetHealth(); vertical = nextAttack = hitFlash = staggerMeter = 0; slam = true;
             Visual.localScale = Vector3.one; Visual.localRotation = Quaternion.identity;
             SlamMarker.gameObject.SetActive(false); StrikeMarker.gameObject.SetActive(false); Enter(Phase.Observe, 1.5f); OnVeil(Veil.Current);

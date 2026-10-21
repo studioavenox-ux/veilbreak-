@@ -11,7 +11,7 @@ namespace Veilbreak
         public GameInput InputSource { get; set; }
         public ArenaGameManager Game { get; set; }
         public float Sensitivity { get => sensitivity; set => sensitivity = Mathf.Clamp(value, .03f, .5f); }
-        float yaw;
+        float yaw, currentDistance;
         public void ResetView() { yaw = 0; pitch = 24; Snap(); }
         void LateUpdate()
         {
@@ -30,10 +30,10 @@ namespace Veilbreak
             Vector3 offset = Quaternion.Euler(pitch, yaw, 0) * Vector3.back * distance;
             float length = distance;
             if (Physics.SphereCast(focus, .22f, offset.normalized, out RaycastHit hit, distance, obstructionMask, QueryTriggerInteraction.Ignore))
-                length = Mathf.Max(.5f, hit.distance - .15f);
-            Vector3 desired = focus + offset.normalized * length;
-            // Retract immediately at obstructions, ease out when clear.
-            transform.position = snap || length < distance ? desired : Vector3.Lerp(transform.position, desired, 1 - Mathf.Exp(-smooth * Time.unscaledDeltaTime));
+                length = Mathf.Max(.15f, hit.distance - .15f);
+            // Ease only distance along the checked ray, not world position around an unchecked corner.
+            currentDistance = snap || length < currentDistance ? length : Mathf.Lerp(currentDistance, length, 1 - Mathf.Exp(-smooth * Time.unscaledDeltaTime));
+            transform.position = focus + offset.normalized * currentDistance;
             transform.LookAt(focus);
         }
     }

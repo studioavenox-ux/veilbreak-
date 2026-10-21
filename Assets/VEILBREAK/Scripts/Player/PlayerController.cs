@@ -2,6 +2,7 @@ using UnityEngine;
 
 namespace Veilbreak
 {
+    [DefaultExecutionOrder(-30)]
     [RequireComponent(typeof(CharacterController), typeof(HealthComponent))]
     public sealed class PlayerController : MonoBehaviour
     {
@@ -13,8 +14,10 @@ namespace Veilbreak
         public Transform Visual { get; set; }
         public CharacterController Body { get; private set; }
         public HealthComponent Health { get; private set; }
-        public bool IsDodging => dodgeRemaining > 0;
-        float vertical, dodgeRemaining, nextDodge;
+        public bool IsDodging => Time.time < dodgeUntil;
+        public event System.Action Dodged;
+        public float DodgeCooldownRemaining => Mathf.Max(0, nextDodge - Time.time);
+        float vertical, dodgeUntil, nextDodge;
         Vector3 dodgeDirection;
         Vector3 spawn;
         Quaternion spawnRotation;
@@ -29,17 +32,19 @@ namespace Veilbreak
             Vector3 direction = forward * input.y + right * input.x;
             if (InputSource.ConsumeDodge() && Time.time >= nextDodge)
             {
-                dodgeRemaining = dodgeDuration; nextDodge = Time.time + dodgeCooldown;
+                dodgeUntil = Time.time + dodgeDuration; nextDodge = Time.time + dodgeCooldown;
+                Dodged?.Invoke();
                 dodgeDirection = direction.sqrMagnitude > .01f ? direction.normalized : transform.forward;
             }
+            float dodgeRemaining = Mathf.Max(0, dodgeUntil - Time.time);
             bool dodging = IsDodging;
-            Vector3 motion = dodging ? dodgeDirection * dodgeSpeed : direction * speed;
-            dodgeRemaining = Mathf.Max(0, dodgeRemaining - Time.deltaTime);
+            float dodgeStep = Mathf.Min(dodgeRemaining, Time.deltaTime);
+            Vector3 displacement = dodgeDirection * dodgeSpeed * dodgeStep + direction * speed * (Time.deltaTime - dodgeStep);
             if (direction.sqrMagnitude > .01f && !dodging)
                 transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(direction), turnSpeed * Time.deltaTime);
             if (Body.isGrounded && vertical < 0) vertical = -2;
             vertical += gravity * Time.deltaTime;
-            Body.Move((motion + Vector3.up * vertical) * Time.deltaTime);
+            Body.Move(displacement + Vector3.up * vertical * Time.deltaTime);
             if (Visual) Visual.localScale = dodging ? new Vector3(1, .8f, 1.15f) : Vector3.one;
             if (transform.position.y < -6) Health.Damage(Health.Maximum);
         }
@@ -50,7 +55,7 @@ namespace Veilbreak
         public void ResetPlayer()
         {
             Body.enabled = false; transform.SetPositionAndRotation(spawn, spawnRotation); Body.enabled = true;
-            vertical = dodgeRemaining = nextDodge = 0; Health.ResetHealth();
+            vertical = dodgeUntil = nextDodge = 0; Health.ResetHealth();
             if (Visual) Visual.localScale = Vector3.one;
         }
     }

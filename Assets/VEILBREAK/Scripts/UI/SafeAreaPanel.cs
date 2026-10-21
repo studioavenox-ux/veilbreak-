@@ -8,6 +8,7 @@ namespace Veilbreak
         Vector2 size;
         void Update()
         {
+            if (Screen.width <= 0 || Screen.height <= 0) return;
             if (last == Screen.safeArea && size == new Vector2(Screen.width, Screen.height)) return;
             last = Screen.safeArea; size = new Vector2(Screen.width, Screen.height);
             var rect = (RectTransform)transform;

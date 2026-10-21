@@ -3,6 +3,7 @@ using UnityEngine.EventSystems;
 
 namespace Veilbreak
 {
+    [DisallowMultipleComponent]
     public sealed class VeilbreakBootstrap : MonoBehaviour
     {
         [SerializeField] int targetFrameRate = 60;
@@ -12,7 +13,13 @@ namespace Veilbreak
             Application.targetFrameRate = targetFrameRate;
             Screen.orientation = ScreenOrientation.LandscapeLeft;
             art = new PrimitiveFactory();
-            Build();
+            try { Build(); }
+            catch (System.Exception error)
+            {
+                Debug.LogException(error, this);
+                // Disable partial construction so one setup failure does not produce per-frame null errors.
+                gameObject.SetActive(false); Time.timeScale = 1;
+            }
         }
         void OnDestroy() => art?.Dispose();
         void Build()
@@ -45,19 +52,20 @@ namespace Veilbreak
             boss.StrikeMarker = art.Shape("Energy strike warning lane", bossRoot, PrimitiveType.Cube, Vector3.zero, Vector3.one, sceneArt.Warning);
             boss.SlamMarker.gameObject.SetActive(false); boss.StrikeMarker.gameObject.SetActive(false);
             var cameraRoot = art.Group("Main Camera", transform, Vector3.zero); cameraRoot.tag = "MainCamera";
-            var camera = cameraRoot.gameObject.AddComponent<Camera>(); camera.nearClipPlane = .1f; camera.farClipPlane = 90; camera.fieldOfView = 60;
+            var camera = cameraRoot.gameObject.AddComponent<Camera>(); camera.nearClipPlane = .1f; camera.farClipPlane = 90; camera.fieldOfView = 60; camera.clearFlags = CameraClearFlags.SolidColor;
             cameraRoot.gameObject.AddComponent<AudioListener>();
             var follow = cameraRoot.gameObject.AddComponent<ThirdPersonCameraController>();
             player.InputSource = input; player.Game = game; player.CameraTransform = cameraRoot; player.Visual = visual; player.SetSpawn();
             var combat = playerRoot.gameObject.AddComponent<PlayerCombat>(); combat.Player = player; combat.Guardian = boss; combat.BladePivot = blade;
             boss.Player = player; boss.Game = game; boss.Veil = veil; boss.Visual = bossVisual;
-            veil.Player = player; veil.Validator = safety; veil.Objects = reactive.ToArray(); veil.Sun = sun; veil.EnergyMaterial = sceneArt.Energy;
+            veil.GuardianBody = bossBody; veil.Player = player; veil.Validator = safety; veil.Objects = reactive.ToArray(); veil.Sun = sun; veil.EnergyMaterial = sceneArt.Energy;
             follow.Target = playerRoot; follow.Guardian = bossRoot; follow.InputSource = input; follow.Game = game;
             game.Player = player; game.Guardian = boss; game.Combat = combat; game.Veil = veil; game.InputSource = input; game.FollowCamera = follow;
             veil.ResetState(); boss.Initialize(); follow.ResetView(); game.Initialize();
             var eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule)); eventSystem.transform.SetParent(transform);
             var hudRoot = new GameObject("Native gameplay HUD", typeof(RectTransform)); hudRoot.transform.SetParent(transform, false);
             var hud = hudRoot.AddComponent<RuntimeHUD>(); hud.Game = game; hud.InputSource = input; hud.Initialize();
+            gameObject.AddComponent<EncounterAudio>().Initialize(game);
             Debug.Log("VEILBREAK: Veil Arena ready. Procedural placeholder art; device performance not measured.");
         }
     }
