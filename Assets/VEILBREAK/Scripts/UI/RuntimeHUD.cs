@@ -10,6 +10,9 @@ namespace Veilbreak
         public GameInput InputSource { get; set; }
         RectTransform safe;
         GameObject gameplay, modal, resume;
+        Text dodgeLabel;
+        ActionButton dodgeButton, shiftButton;
+        CanvasScaler canvasScaler;
         Text healthLabel, bossLabel, realityLabel, shiftLabel, hint, heading, description, playLabel;
         Image healthFill, bossFill, flash;
         string message;
@@ -23,7 +26,7 @@ namespace Veilbreak
             whiteSprite = Sprite.Create(Texture2D.whiteTexture, new UnityEngine.Rect(0, 0, Texture2D.whiteTexture.width, Texture2D.whiteTexture.height), Vector2.one * .5f);
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var canvas = gameObject.AddComponent<Canvas>(); canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            var scaler = gameObject.AddComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            var scaler = gameObject.AddComponent<CanvasScaler>(); canvasScaler = scaler; scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1600, 900); scaler.matchWidthOrHeight = 1;
             gameObject.AddComponent<GraphicRaycaster>();
             safe = Rect("Safe Area", transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
@@ -45,8 +48,10 @@ namespace Veilbreak
             var knob = Image("Thumb", joyImage.transform, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(-28, -28), new Vector2(28, 28), new Color(.55f, .72f, .8f, .8f), false);
             joy.Knob = knob.rectTransform;
             Action(g, "ATTACK", new Vector2(-95, 110), new Vector2(145, 135), InputSource.Attack, out _);
-            Action(g, "DODGE", new Vector2(-263, 95), new Vector2(135, 110), InputSource.Dodge, out _);
+            Action(g, "DODGE", new Vector2(-263, 95), new Vector2(135, 110), InputSource.Dodge, out dodgeLabel);
+            dodgeButton = dodgeLabel.GetComponentInParent<ActionButton>();
             Action(g, "SHIFT", new Vector2(-190, 265), new Vector2(150, 130), InputSource.Shift, out shiftLabel);
+            shiftButton = shiftLabel.GetComponentInParent<ActionButton>();
             hint = Label("Combat guidance", g, "", 23, new Vector2(.5f, 1), new Vector2(0, -110), new Vector2(950, 55));
             flash = Image("Damage feedback", safe, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.clear, false);
             modal = Image("Menu overlay", safe, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, new Color(.015f, .03f, .05f, .94f), true).gameObject;
@@ -87,6 +92,7 @@ namespace Veilbreak
         }
         void OnState(ArenaState state)
         {
+            if (EventSystem.current) EventSystem.current.SetSelectedGameObject(null);
             gameplay.SetActive(state == ArenaState.Playing); modal.SetActive(state != ArenaState.Playing);
             resume.SetActive(state == ArenaState.Paused);
             heading.text = state == ArenaState.Title ? "VEILBREAK" : state == ArenaState.Paused ? "PAUSED" : state == ArenaState.Victory ? "VICTORY" : "ENCOUNTER FAILED";
@@ -99,6 +105,10 @@ namespace Veilbreak
         void Update()
         {
             if (!Game || !healthFill) return;
+            canvasScaler.matchWidthOrHeight = Screen.width / (float)Mathf.Max(1, Screen.height) < 1.6f ? 0 : 1;
+            dodgeButton.Available = Game.Player.DodgeCooldownRemaining <= 0;
+            shiftButton.Available = Game.Veil.CooldownRemaining <= 0;
+            dodgeLabel.text = dodgeButton.Available ? "DODGE" : $"DODGE\n{Game.Player.DodgeCooldownRemaining:0.0}s";
             healthFill.fillAmount = Game.Player.Health.Current / Game.Player.Health.Maximum;
             healthLabel.text = $"HEALTH  {Game.Player.Health.Current:0} / {Game.Player.Health.Maximum:0}";
             bossFill.fillAmount = Game.Guardian.Health.Current / Game.Guardian.Health.Maximum;

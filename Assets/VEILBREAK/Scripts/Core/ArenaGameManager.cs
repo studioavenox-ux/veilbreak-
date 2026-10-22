@@ -4,6 +4,7 @@ using UnityEngine;
 namespace Veilbreak
 {
     public enum ArenaState { Title, Playing, Paused, Victory, Defeat }
+    [DisallowMultipleComponent]
     public sealed class ArenaGameManager : MonoBehaviour
     {
         public ArenaState State { get; private set; } = ArenaState.Title;
@@ -15,8 +16,11 @@ namespace Veilbreak
         public GameInput InputSource { get; set; }
         public ThirdPersonCameraController FollowCamera { get; set; }
         public event Action<ArenaState> Changed;
+        bool initialized;
         public void Initialize()
         {
+            if (initialized) return;
+            initialized = true;
             Player.Health.Died += Lose; Guardian.Health.Died += Win;
             SetState(ArenaState.Title);
         }
@@ -26,6 +30,7 @@ namespace Veilbreak
             if (Guardian) Guardian.Health.Died -= Win;
             Time.timeScale = 1;
         }
+        void OnApplicationFocus(bool focused) { if (!focused && initialized && IsPlaying) SetState(ArenaState.Paused); }
         void OnApplicationPause(bool paused) { if (paused && IsPlaying) SetState(ArenaState.Paused); }
         void Update() { if (Input.GetKeyDown(KeyCode.Escape)) TogglePause(); }
         void Win() { if (IsPlaying) SetState(ArenaState.Victory); }

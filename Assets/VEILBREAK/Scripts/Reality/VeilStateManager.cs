@@ -3,12 +3,14 @@ using UnityEngine;
 
 namespace Veilbreak
 {
+    [DisallowMultipleComponent]
     public sealed class VeilStateManager : MonoBehaviour
     {
         [SerializeField, Min(.1f)] float shiftCooldown = 1;
         public VeilState Current { get; private set; }
         public float CooldownRemaining => Mathf.Max(0, nextShift - Time.time);
         public VeilReactiveObject[] Objects { get; set; }
+        public CharacterController GuardianBody { get; set; }
         public PlayerController Player { get; set; }
         public ShiftSafetyValidator Validator { get; set; }
         public Light Sun { get; set; }
@@ -25,6 +27,8 @@ namespace Veilbreak
             if (!Player.Game.IsPlaying || CooldownRemaining > 0) return false;
             var target = Current == VeilState.Living ? VeilState.Broken : VeilState.Living;
             if (!Validator.CanShift(Player.Body, Objects, target, out string reason)) { Rejected?.Invoke(reason); return false; }
+            if (GuardianBody && !Validator.CanOccupy(GuardianBody, Objects, target))
+            { Rejected?.Invoke("Shift blocked: the guardian occupies forming stone."); return false; }
             Apply(target); nextShift = Time.time + shiftCooldown; return true;
         }
         public void ResetState() { nextShift = 0; Apply(VeilState.Living); }

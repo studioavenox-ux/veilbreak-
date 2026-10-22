@@ -6,7 +6,7 @@ On SHIFT during Playing:
 1. Reject while cooling down; HUD displays remaining time.
 2. Synchronize physics transforms.
 3. Check penetration of the player capsule with all destination solids, including currently inactive objects. More than .025 m penetration blocks the transition. This tolerance avoids false rejection at a resting surface.
-4. Ray-test down from the player's feet for support within 1.35 m, ignoring current-only objects. Without destination/shared support, reject. This conservative check also rejects shifting far above the ground.
+4. Check the Guardian capsule against incoming solids too; reject with a HUD reason if forming stone would trap it. Ray-test down from the player's feet for support within 1.35 m, ignoring current-only objects. Without destination/shared support, reject. This conservative check also rejects shifting far above the ground.
 5. Apply object presence, shared energy color, sun, ambient light, fog, sky color, armor/core appearance, and damage rules without moving the player.
 6. Start cooldown and publish an event for HUD feedback.
 

@@ -30,3 +30,10 @@ The source implements the requested encounter paths, but milestone acceptance in
 The sections above record PR #1's initial source-only validation, not a successful Unity run. A follow-up audit on `arena/b0e1f861-veilbreak` found and repaired the unresolved UI assembly name, camera-pointer cleanup, warning-text priority and generator failure/recovery paths. See [PostMergeAudit.md](PostMergeAudit.md) for exact evidence, comparison with the 78-file attachment, changed behavior and remaining checks.
 
 Current executed results: Tree-sitter syntax parsing for 21 C# files; JSON/XML/reference-name/metadata checks with 43 unique GUIDs; four Python validator regressions; whitespace checks. Unity compilation, scene generation, Unity tests, Play Mode and Android/device checks remain **not executed**. Test sources were expanded; their presence is not a passing Unity Test Runner result.
+
+## Candidate-reliability pass — 2026-10-21
+Baseline on `arena/aa8151b8-veilbreak`: clean, `806935a`, confirmed identical to latest main with PRs #1–#3 merged. Read the current runtime/art/UI/Editor/tests and essential configuration; retained the existing project and procedural scene workflow.
+
+Executed: Tree-sitter syntax parsing for **27 C# files**, JSON/XML/assembly names and **49 unique metadata GUIDs**, all **4 Python source-validator regressions**, and whitespace checks. Unity BuildPipeline API names were cross-checked against Unity 6000.0 source; this is not compilation. No Unity scene/settings/cache or build binary was generated here.
+
+Prepared, **not executed**: **21 Unity test methods** (9 EditMode, 12 PlayMode), including new timing/cancel/immunity, occupancy, cover routing, UI state and pressed-feedback regressions. C# compilation, scene generation, Play Mode, Unity tests, APK build/install and physical-device/performance checks remain blocked. See [ReleaseCandidate.md](ReleaseCandidate.md) for evidence-based repairs, exact run/build commands and mandatory acceptance gates. This source is not a certified release candidate.

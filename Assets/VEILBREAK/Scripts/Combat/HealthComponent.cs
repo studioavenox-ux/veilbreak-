@@ -12,11 +12,11 @@ namespace Veilbreak
         public event Action Changed;
         public event Action Died;
         void Awake() => ResetHealth();
-        public void Configure(float value) { maximum = Mathf.Max(1, value); ResetHealth(); }
+        public void Configure(float value) { maximum = float.IsNaN(value) || float.IsInfinity(value) ? 100 : Mathf.Max(1, value); ResetHealth(); }
         public void ResetHealth() { Current = maximum; Changed?.Invoke(); }
         public void Damage(float amount)
         {
-            if (IsDead || amount <= 0 || float.IsNaN(amount)) return;
+            if (IsDead || amount <= 0 || (float.IsNaN(amount) || float.IsInfinity(amount))) return;
             Current = Mathf.Max(0, Current - amount);
             Changed?.Invoke();
             if (IsDead) Died?.Invoke();

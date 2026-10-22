@@ -13,6 +13,8 @@
 - `UI/`: real Unity Canvas, health fills, controls, safe area, native event handlers and overlays.
 - `Editor/VeilArenaGenerator`: scene, URP assets and project defaults generated through Editor APIs.
 
+The runtime also contains `EncounterAudio` (original, generated reusable feedback clips) and the bounded flat-courtyard `ArenaNavigator`. `Editor/AndroidBuild` builds an explicit single-scene development APK and checks BuildReport status.
+
 The source separates runtime, Editor and test assemblies. Key tuning defaults have `[SerializeField]`; runtime reference wiring uses explicit properties. Both actors are reused on restart. Event subscriptions are initialized once and removed on destruction. Runtime placeholder art is built once per scene, not per attack or restart.
 
 The project uses the built-in legacy Input Manager, not the new Input System package. `ProjectSettings/InputManager.asset` defines mouse axes and StandaloneInputModule axes. Generator selects legacy handling. Do not change to Input System-only without migrating both runtime polling and the EventSystem module.
@@ -62,3 +64,8 @@ Compilation/import and on-device behavior must be established using Unity, not t
 4. Enter Play Mode: Generate Veil Arena must be disabled. Try a conflicting layer-8 name in a disposable clone: generation should fail clearly without renaming the layer or replacing the scene.
 5. Ensure generation reports success only after the scene actually saves. Check that the Android Build Profile uses the global scene list, or manually add VeilArena to a profile with a scene-list override.
 6. Start combat and shift during a telegraph: the boss warning should remain readable rather than being replaced by the shift/tutorial message. Temporarily lose app focus while dragging the camera, then try a new finger after returning/resuming; input must not remain owned by the vanished finger.
+
+## New reliability regressions (Unity execution pending)
+EditMode adds finite-health input handling, Guardian-size destination occupancy, disabled collider filtering, a sideways route around a wall, and button pointer ownership/pressed feedback. PlayMode adds melee windup/one-hit/cooldown, dodge cancel/immunity, Guardian overlap rejection, HUD health/reality synchronization, restart cancellation and pursuit around Living cover. The full suite now has **21 Unity test methods** (9 EditMode, 12 PlayMode); none were executed in the source sandbox. Existing art/lifecycle/shift tests are retained.
+
+See `ReleaseCandidate.md` for the Android development-build command, stage-by-stage acceptance gates and the required release evidence. The build utility does not substitute for Test Runner or physical-device testing.
