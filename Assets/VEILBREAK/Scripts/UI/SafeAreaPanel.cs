@@ -6,13 +6,18 @@ namespace Veilbreak
     {
         Rect last;
         Vector2 size;
-        void Update()
+        void Awake() => Apply();
+        void Update() => Apply();
+        void Apply()
         {
             if (Screen.width <= 0 || Screen.height <= 0) return;
-            if (last == Screen.safeArea && size == new Vector2(Screen.width, Screen.height)) return;
-            last = Screen.safeArea; size = new Vector2(Screen.width, Screen.height);
+            Vector2 currentSize = new Vector2(Screen.width, Screen.height);
+            if (last == Screen.safeArea && size == currentSize) return;
+            last = Screen.safeArea; size = currentSize;
             var rect = (RectTransform)transform;
-            rect.anchorMin = last.min / size; rect.anchorMax = last.max / size;
+            Vector2 min = Vector2.Max(Vector2.zero, Vector2.Min(Vector2.one, last.min / size));
+            Vector2 max = Vector2.Max(min, Vector2.Min(Vector2.one, last.max / size));
+            rect.anchorMin = min; rect.anchorMax = max;
             rect.offsetMin = rect.offsetMax = Vector2.zero;
         }
     }

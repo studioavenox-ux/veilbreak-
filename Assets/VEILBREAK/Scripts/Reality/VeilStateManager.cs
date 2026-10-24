@@ -20,11 +20,11 @@ namespace Veilbreak
         float nextShift;
         void Update()
         {
-            if (Player != null && Player.Game.IsPlaying && Player.InputSource.ConsumeShift()) TryShift();
+            if (Player != null && Player.Game != null && Player.Game.IsPlaying && Player.InputSource != null && Player.InputSource.ConsumeShift()) TryShift();
         }
         public bool TryShift()
         {
-            if (!Player.Game.IsPlaying || CooldownRemaining > 0) return false;
+            if (!Player || !Player.Game || !Player.Game.IsPlaying || CooldownRemaining > 0 || !Validator) return false;
             var target = Current == VeilState.Living ? VeilState.Broken : VeilState.Living;
             if (!Validator.CanShift(Player.Body, Objects, target, out string reason)) { Rejected?.Invoke(reason); return false; }
             if (GuardianBody && !Validator.CanOccupy(GuardianBody, Objects, target))
@@ -35,12 +35,15 @@ namespace Veilbreak
         void Apply(VeilState state)
         {
             Current = state;
-            foreach (var item in Objects) item.Apply(state);
+            if (Objects != null) foreach (var item in Objects) if (item) item.Apply(state);
             bool broken = state == VeilState.Broken;
             Color energy = broken ? new Color(.65f, .15f, 1) : new Color(.05f, .9f, 1);
-            EnergyMaterial.color = energy; EnergyMaterial.SetColor("_EmissionColor", energy * 1.4f);
-            Sun.color = broken ? new Color(.65f, .55f, 1) : new Color(1, .86f, .65f);
-            Sun.intensity = broken ? .7f : 1.15f;
+            if (EnergyMaterial) { EnergyMaterial.color = energy; EnergyMaterial.SetColor("_EmissionColor", energy * 1.4f); }
+            if (Sun)
+            {
+                Sun.color = broken ? new Color(.65f, .55f, 1) : new Color(1, .86f, .65f);
+                Sun.intensity = broken ? .7f : 1.15f;
+            }
             RenderSettings.ambientLight = broken ? new Color(.22f, .17f, .32f) : new Color(.42f, .47f, .51f);
             RenderSettings.fogColor = broken ? new Color(.065f, .025f, .12f) : new Color(.18f, .29f, .35f);
             if (Camera.main) Camera.main.backgroundColor = RenderSettings.fogColor;

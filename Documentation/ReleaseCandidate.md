@@ -56,7 +56,7 @@ These commands have **not** been run here. Use local Android/Unity tools, not a 
 | Source/configuration checks | Passed; see Validation.md | Rerun after importing/generated config |
 | Correct Editor/package import and C# compile | BLOCKED | No compilation errors; resolved package lock/version |
 | Repeatable generation | BLOCKED | Generate twice; same scene/asset GUIDs, one bootstrap, valid URP/build scenes |
-| Automated Unity tests | BLOCKED | 9 EditMode + 12 PlayMode test methods, zero failures, saved reports |
+| Automated Unity tests | BLOCKED | 14 EditMode + 15 PlayMode test methods, zero failures, saved reports |
 | Full game loop | BLOCKED | Launch → start → move/look/attack/dodge/shift → both attacks → win/loss → 3 retries/replays/title cycles; no Console errors |
 | Shift edge cases | BLOCKED | Test forming cover/platforms near both actors, pillars, boundaries; same player position, rejection/no cooldown if blocked |
 | Boss routing / damage | BLOCKED | Pursue around both cover variants; no repeated per-frame damage or wall hits; readable windup and vulnerable recovery |

@@ -10,8 +10,11 @@ namespace Veilbreak
         AudioSource source;
         AudioClip swing, dodge, shift, warning, hit, result;
         float lastHealth;
+        bool initialized;
         public void Initialize(ArenaGameManager manager)
         {
+            if (initialized) return;
+            initialized = true;
             game = manager;
             source = gameObject.AddComponent<AudioSource>(); source.playOnAwake = false; source.volume = .18f; source.spatialBlend = 0;
             swing = Tone("Blade", 620, 180, .12f); dodge = Tone("Dodge", 190, 90, .13f);

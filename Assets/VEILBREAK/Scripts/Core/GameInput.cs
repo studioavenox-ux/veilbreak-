@@ -9,6 +9,7 @@ namespace Veilbreak
         public VirtualJoystick Joystick { private get; set; }
         public TouchLookArea LookArea { private get; set; }
         readonly System.Collections.Generic.List<RaycastResult> uiHits = new System.Collections.Generic.List<RaycastResult>();
+        readonly System.Collections.Generic.List<ActionButton> buttons = new System.Collections.Generic.List<ActionButton>();
         PointerEventData mousePointer;
         EventSystem pointerSystem;
         Vector2 look;
@@ -43,7 +44,15 @@ namespace Veilbreak
         }
         public bool ConsumeDodge() { bool v = dodge || Input.GetKeyDown(KeyCode.Space); dodge = false; return v; }
         public bool ConsumeShift() { bool v = shift || Input.GetKeyDown(KeyCode.Q); shift = false; return v; }
+        public void RegisterButton(ActionButton button) { if (button && !buttons.Contains(button)) buttons.Add(button); }
         void OnApplicationFocus(bool focused) { if (!focused) Clear(); }
-        public void Clear() { attack = dodge = shift = false; look = Vector2.zero; if (Joystick) Joystick.ResetInput(); if (LookArea) LookArea.ResetInput(); }
+        void OnApplicationPause(bool paused) { if (paused) Clear(); }
+        public void Clear()
+        {
+            attack = dodge = shift = false; look = Vector2.zero;
+            if (Joystick) Joystick.ResetInput();
+            if (LookArea) LookArea.ResetInput();
+            foreach (var button in buttons) if (button) button.ResetInput();
+        }
     }
 }

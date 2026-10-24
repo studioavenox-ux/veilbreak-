@@ -31,8 +31,8 @@ namespace Veilbreak
             Time.timeScale = 1;
         }
         void OnApplicationFocus(bool focused) { if (!focused && initialized && IsPlaying) SetState(ArenaState.Paused); }
-        void OnApplicationPause(bool paused) { if (paused && IsPlaying) SetState(ArenaState.Paused); }
-        void Update() { if (Input.GetKeyDown(KeyCode.Escape)) TogglePause(); }
+        void OnApplicationPause(bool paused) { if (paused && initialized && IsPlaying) SetState(ArenaState.Paused); }
+        void Update() { if (initialized && Input.GetKeyDown(KeyCode.Escape)) TogglePause(); }
         void Win() { if (IsPlaying) SetState(ArenaState.Victory); }
         void Lose() { if (IsPlaying) SetState(ArenaState.Defeat); }
         public void TogglePause()
@@ -43,13 +43,16 @@ namespace Veilbreak
         public void ReturnToTitle() => SetState(ArenaState.Title);
         public void Restart()
         {
+            State = ArenaState.Title;
             Time.timeScale = 1;
-            InputSource.Clear(); Player.ResetPlayer(); Combat.ResetCombat(); Veil.ResetState(); Guardian.ResetGuardian(); FollowCamera.ResetView();
+            if (InputSource) InputSource.Clear();
+            Player.ResetPlayer(); Combat.ResetCombat(); Veil.ResetState(); Guardian.ResetGuardian(); FollowCamera.ResetView();
             SetState(ArenaState.Playing);
         }
         void SetState(ArenaState state)
         {
-            State = state; InputSource.Clear();
+            State = state;
+            if (InputSource) InputSource.Clear();
             Time.timeScale = IsPlaying ? 1 : 0;
             Cursor.lockState = IsPlaying && !Application.isMobilePlatform ? CursorLockMode.Confined : CursorLockMode.None;
             Cursor.visible = true; Changed?.Invoke(state);
