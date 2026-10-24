@@ -24,9 +24,15 @@ namespace Veilbreak
         void Position(bool snap)
         {
             Vector3 focus = Target.position + Vector3.up * 1.5f;
-            // Slight framing bias, not an automatic lock-on; player rotation always remains authoritative.
+            // Slight framing bias, not an automatic lock-on; clamp against walls so focus never enters cover.
             if (Guardian && Vector3.Distance(Target.position, Guardian.position) < 12)
-                focus += Vector3.ClampMagnitude(Guardian.position - Target.position, 2) * .18f;
+            {
+                Vector3 bias = Vector3.ClampMagnitude(Guardian.position - Target.position, 2) * .18f;
+                float biasLen = bias.magnitude;
+                if (biasLen > .001f && Physics.SphereCast(focus, .24f, bias / biasLen, out RaycastHit biasHit, biasLen, obstructionMask, QueryTriggerInteraction.Ignore))
+                    bias = (bias / biasLen) * Mathf.Max(0, biasHit.distance - .02f);
+                focus += bias;
+            }
             Vector3 offset = Quaternion.Euler(pitch, yaw, 0) * Vector3.back * distance;
             float length = distance;
             if (Physics.SphereCast(focus, .22f, offset.normalized, out RaycastHit hit, distance, obstructionMask, QueryTriggerInteraction.Ignore))

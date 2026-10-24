@@ -16,10 +16,10 @@ namespace Veilbreak
         public void ResetCombat() { nextAttack = feedbackEnd = 0; hitAt = -1; if (BladePivot) BladePivot.localRotation = Quaternion.identity; }
         void Update()
         {
-            if (!Player.Game.IsPlaying) return;
+            if (!Player || Player.Game == null || !Player.Game.IsPlaying || Player.Health.IsDead || !Guardian) return;
             // Dodge cancels a pending melee hit rather than allowing damage while evading.
             if (Player.IsDodging) { hitAt = -1; feedbackEnd = 0; }
-            if (Player.InputSource.ConsumeAttack() && Time.time >= nextAttack && !Player.IsDodging)
+            if (Player.InputSource != null && Player.InputSource.ConsumeAttack() && Time.time >= nextAttack && !Player.IsDodging)
             {
                 nextAttack = Time.time + cooldown; hitAt = Time.time + windup; feedbackEnd = Time.time + .32f; SwingStarted?.Invoke();
             }
@@ -27,9 +27,10 @@ namespace Veilbreak
                 ? Quaternion.Euler(0, Mathf.Lerp(-65, 90, 1 - (feedbackEnd - Time.time) / .32f), -30) : Quaternion.identity;
             if (hitAt < 0 || Time.time < hitAt) return;
             hitAt = -1; // Exactly one damage evaluation per swing.
-            Vector3 to = Vector3.ProjectOnPlane(Guardian.transform.position - transform.position, Vector3.up);
-            if (!Guardian.Health.IsDead && to.magnitude <= range && Vector3.Angle(transform.forward, to) <= halfAngle &&
-                !Physics.Linecast(transform.position + Vector3.up, Guardian.transform.position + Vector3.up, 1 << 8))
+            Vector3 delta = Guardian.transform.position - transform.position;
+            Vector3 to = Vector3.ProjectOnPlane(delta, Vector3.up);
+            if (!Guardian.Health.IsDead && Mathf.Abs(delta.y) < 2.5f && to.magnitude <= range && Vector3.Angle(transform.forward, to) <= halfAngle &&
+                !Physics.Linecast(transform.position + Vector3.up, Guardian.transform.position + Vector3.up, 1 << 8, QueryTriggerInteraction.Ignore))
             { Guardian.ReceiveHit(damage); HitLanded?.Invoke(); }
         }
     }

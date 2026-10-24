@@ -9,10 +9,13 @@ namespace Veilbreak.Editor
     // An internal development candidate, not a signed store release. Run tests separately before distribution.
     public static class AndroidBuild
     {
+        [MenuItem("VEILBREAK/Build Android Development APK", true)]
+        static bool CanBuild() => !EditorApplication.isPlayingOrWillChangePlaymode;
+
         [MenuItem("VEILBREAK/Build Android Development APK")]
         public static void BuildDevelopment()
         {
-            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            if (!CanBuild())
                 throw new InvalidOperationException("Exit Play Mode before building.");
             if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android, BuildTarget.Android))
                 throw new InvalidOperationException("Install Android Build Support, SDK/NDK and OpenJDK for this Unity version through Hub.");
@@ -30,6 +33,7 @@ namespace Veilbreak.Editor
                 {
                     scenes = new[] { "Assets/VEILBREAK/Scenes/VeilArena.unity" },
                     locationPathName = "Builds/Android/VEILBREAK-development.apk",
+                    targetGroup = BuildTargetGroup.Android,
                     target = BuildTarget.Android,
                     options = BuildOptions.Development
                 });

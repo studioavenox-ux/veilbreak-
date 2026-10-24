@@ -31,7 +31,8 @@ namespace Veilbreak
             pointer = data.pointerId; Refresh(); Pressed?.Invoke();
         }
         public void OnPointerUp(PointerEventData data)
-        { if (pointer == data.pointerId) { pointer = int.MinValue; Refresh(); } }
-        void OnDisable() { pointer = int.MinValue; Refresh(); }
+        { if (pointer == data.pointerId) ResetInput(); }
+        public void ResetInput() { pointer = int.MinValue; Refresh(); }
+        void OnDisable() => ResetInput();
     }
 }

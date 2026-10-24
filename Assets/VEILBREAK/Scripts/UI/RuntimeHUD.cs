@@ -17,12 +17,16 @@ namespace Veilbreak
         Image healthFill, bossFill, flash;
         string message;
         float messageUntil, flashUntil, previousHealth;
+        bool initialized;
+        ArenaState lastState = ArenaState.Title;
         Font font;
         Sprite whiteSprite;
         static readonly Color Panel = new Color(.025f, .05f, .075f, .94f);
         static readonly Color Cyan = new Color(.08f, .9f, 1);
         public void Initialize()
         {
+            if (initialized) return;
+            initialized = true;
             whiteSprite = Sprite.Create(Texture2D.whiteTexture, new UnityEngine.Rect(0, 0, Texture2D.whiteTexture.width, Texture2D.whiteTexture.height), Vector2.one * .5f);
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var canvas = gameObject.AddComponent<Canvas>(); canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -42,16 +46,15 @@ namespace Veilbreak
             var bossBar = Bar(g, new Vector2(.5f, 1), new Vector2(0, -55), new Vector2(460, 22), new Color(1, .28f, .37f), out bossFill);
             bossLabel = Label("Guardian health", bossBar, "VEIL GUARDIAN", 21, new Vector2(.5f, .5f), new Vector2(0, 30), new Vector2(500, 30));
             realityLabel = Label("Reality", g, "LIVING VEIL", 22, new Vector2(1, 1), new Vector2(-200, -45), new Vector2(260, 45));
-            Button(g, "II", new Vector2(1, 1), new Vector2(-53, -48), new Vector2(66, 60), Game.TogglePause);
+            var pauseButton = Button(g, "II", new Vector2(1, 1), new Vector2(-53, -48), new Vector2(66, 60), Game.TogglePause);
+            pauseButton.navigation = new Navigation { mode = Navigation.Mode.None };
             var joyImage = Image("Movement joystick", g, Vector2.zero, Vector2.zero, new Vector2(45, 40), new Vector2(245, 240), new Color(.07f, .14f, .2f, .65f), true);
             var joy = joyImage.gameObject.AddComponent<VirtualJoystick>(); InputSource.Joystick = joy;
             var knob = Image("Thumb", joyImage.transform, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(-28, -28), new Vector2(28, 28), new Color(.55f, .72f, .8f, .8f), false);
             joy.Knob = knob.rectTransform;
             Action(g, "ATTACK", new Vector2(-95, 110), new Vector2(145, 135), InputSource.Attack, out _);
-            Action(g, "DODGE", new Vector2(-263, 95), new Vector2(135, 110), InputSource.Dodge, out dodgeLabel);
-            dodgeButton = dodgeLabel.GetComponentInParent<ActionButton>();
-            Action(g, "SHIFT", new Vector2(-190, 265), new Vector2(150, 130), InputSource.Shift, out shiftLabel);
-            shiftButton = shiftLabel.GetComponentInParent<ActionButton>();
+            dodgeButton = Action(g, "DODGE", new Vector2(-263, 95), new Vector2(135, 110), InputSource.Dodge, out dodgeLabel);
+            shiftButton = Action(g, "SHIFT", new Vector2(-190, 265), new Vector2(150, 130), InputSource.Shift, out shiftLabel);
             hint = Label("Combat guidance", g, "", 23, new Vector2(.5f, 1), new Vector2(0, -110), new Vector2(950, 55));
             flash = Image("Damage feedback", safe, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.clear, false);
             modal = Image("Menu overlay", safe, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, new Color(.015f, .03f, .05f, .94f), true).gameObject;
@@ -79,11 +82,16 @@ namespace Veilbreak
             Game.Changed -= OnState; Game.Veil.Rejected -= Message; Game.Veil.Changed -= OnShift;
             Game.Player.Health.Changed -= OnHealth;
         }
-        void OnShift(VeilState state) { Message(state == VeilState.Broken ? "BROKEN VEIL — core exposed: deal double damage" : "LIVING VEIL — guardian armor protected"); }
+        void OnShift(VeilState state)
+        {
+            Message(state == VeilState.Broken ? "BROKEN VEIL — core exposed: deal double damage" : "LIVING VEIL — guardian armor protected");
+            RefreshStatus();
+        }
         void OnHealth()
         {
             if (Game.Player.Health.Current < previousHealth) flashUntil = Time.unscaledTime + .25f;
             previousHealth = Game.Player.Health.Current;
+            RefreshStatus();
         }
         void Message(string value)
         {
@@ -92,6 +100,8 @@ namespace Veilbreak
         }
         void OnState(ArenaState state)
         {
+            bool resumedFromPause = state == ArenaState.Playing && lastState == ArenaState.Paused;
+            lastState = state;
             if (EventSystem.current) EventSystem.current.SetSelectedGameObject(null);
             gameplay.SetActive(state == ArenaState.Playing); modal.SetActive(state != ArenaState.Playing);
             resume.SetActive(state == ArenaState.Paused);
@@ -99,10 +109,16 @@ namespace Veilbreak
             description.text = state == ArenaState.Title ? "THE VEIL ARENA\nMove, dodge, and shift into the Broken Veil to expose the guardian's core." :
                 state == ArenaState.Victory ? "The Veil Guardian is defeated." : state == ArenaState.Defeat ? "The guardian remains. Watch its warning, then dodge." : "Take a breath. The encounter is frozen.";
             playLabel.text = state == ArenaState.Title ? "START ENCOUNTER" : state == ArenaState.Paused ? "RESTART ENCOUNTER" : state == ArenaState.Victory ? "REPLAY ENCOUNTER" : "RETRY";
-            if (state == ArenaState.Playing) Message("Move with the left stick / WASD. Attack nearby. SHIFT / Q exposes the core.");
+            if (state == ArenaState.Playing && !resumedFromPause)
+            {
+                previousHealth = Game.Player.Health.Current;
+                Message("Move with the left stick / WASD. Attack nearby. SHIFT / Q exposes the core.");
+            }
             flashUntil = 0;
+            RefreshStatus();
         }
-        void Update()
+        void Update() => RefreshStatus();
+        void RefreshStatus()
         {
             if (!Game || !healthFill) return;
             canvasScaler.matchWidthOrHeight = Screen.width / (float)Mathf.Max(1, Screen.height) < 1.6f ? 0 : 1;
@@ -147,12 +163,14 @@ namespace Veilbreak
             var button = image.gameObject.AddComponent<UnityEngine.UI.Button>(); button.targetGraphic = image; button.onClick.AddListener(callback);
             Label("Label", image.transform, title, 24, new Vector2(.5f, .5f), Vector2.zero, size); return button;
         }
-        void Action(Transform parent, string title, Vector2 pos, Vector2 size, System.Action callback, out Text label)
+        ActionButton Action(Transform parent, string title, Vector2 pos, Vector2 size, System.Action callback, out Text label)
         {
             var image = Image(title, parent, new Vector2(1, 0), new Vector2(1, 0), pos - size / 2, pos + size / 2, Panel, true);
-            image.gameObject.AddComponent<ActionButton>().Pressed = callback;
+            var button = image.gameObject.AddComponent<ActionButton>(); button.Pressed = callback;
+            InputSource?.RegisterButton(button);
             var outline = image.gameObject.AddComponent<Outline>(); outline.effectColor = Cyan; outline.effectDistance = new Vector2(2, -2);
             label = Label("Label", image.transform, title, 25, new Vector2(.5f, .5f), Vector2.zero, size);
+            return button;
         }
     }
 }

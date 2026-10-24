@@ -110,5 +110,88 @@ namespace Veilbreak.Tests
             while(game.Guardian.transform.position.x > -8 && Time.time<deadline && game.IsPlaying) yield return null;
             Assert.Less(game.Guardian.transform.position.x,-8,"Boss should route around the west cover, not stall against it");
         }
+        [UnityTest] public IEnumerator StaggerBuildsOnlyFromBrokenCoreHitsAndTriggersInRecovery()
+        {
+            var game = Create(); yield return null; game.Restart();
+            Place(game.Player, new Vector3(0, .15f, 2)); game.Player.enabled = false;
+            yield return AwaitPhase(game, GuardianAI.Phase.Recovery, 4);
+
+            for (int i = 0; i < 10; i++) game.Guardian.ReceiveHit(18);
+            Assert.AreEqual(0f, game.Guardian.StaggerMeter, .001f);
+            Assert.AreEqual(GuardianAI.Phase.Recovery, game.Guardian.State, "Living Veil hits must never build or trigger stagger");
+            Assert.IsTrue(game.Guardian.ArmorPlate.gameObject.activeSelf);
+
+            Assert.IsTrue(game.Veil.TryShift());
+            Assert.IsFalse(game.Guardian.ArmorPlate.gameObject.activeSelf);
+            game.Guardian.ReceiveHit(18); game.Guardian.ReceiveHit(18);
+            Assert.AreEqual(72f, game.Guardian.StaggerMeter, .01f);
+            Assert.AreEqual(GuardianAI.Phase.Recovery, game.Guardian.State);
+
+            game.Guardian.ReceiveHit(18);
+            Assert.AreEqual(GuardianAI.Phase.Stagger, game.Guardian.State);
+            Assert.AreEqual(0f, game.Guardian.StaggerMeter, .001f);
+
+            float healthBefore = game.Guardian.Health.Current;
+            game.Guardian.ReceiveHit(18);
+            Assert.AreEqual(healthBefore - 36f, game.Guardian.Health.Current, .01f);
+            Assert.AreEqual(0f, game.Guardian.StaggerMeter, .001f, "Hits during Stagger must not pre-charge another stagger");
+        }
+        [UnityTest] public IEnumerator StaggerThresholdReachedOutsideRecoveryTriggersAutomaticallyAndResetsOnRestart()
+        {
+            var game = Create(); yield return null; game.Restart();
+            Place(game.Player, new Vector3(0, .15f, 2)); game.Player.enabled = false;
+            Assert.AreEqual(GuardianAI.Phase.Observe, game.Guardian.State);
+            Assert.IsTrue(game.Veil.TryShift());
+
+            game.Guardian.ReceiveHit(18); game.Guardian.ReceiveHit(18); game.Guardian.ReceiveHit(18);
+            Assert.AreEqual(100f, game.Guardian.StaggerMeter, .01f);
+            Assert.AreEqual(GuardianAI.Phase.Observe, game.Guardian.State, "Stagger must not interrupt non-Recovery phases early");
+
+            yield return AwaitPhase(game, GuardianAI.Phase.Telegraph, 2.5f);
+            Assert.AreEqual(100f, game.Guardian.StaggerMeter, .01f);
+
+            // Without any additional hit during Recovery, finishing Attack must open Stagger immediately.
+            yield return AwaitPhase(game, GuardianAI.Phase.Stagger, 2.2f);
+            Assert.AreEqual(0f, game.Guardian.StaggerMeter, .001f);
+
+            yield return AwaitPhase(game, GuardianAI.Phase.Approach, 2f);
+            game.Guardian.ReceiveHit(18);
+            Assert.AreEqual(36f, game.Guardian.StaggerMeter, .01f);
+
+            game.Restart();
+            Assert.AreEqual(0f, game.Guardian.StaggerMeter, .001f);
+            Assert.AreEqual(GuardianAI.Phase.Observe, game.Guardian.State);
+            Assert.AreEqual(VeilState.Living, game.Veil.Current);
+            Assert.IsTrue(game.Guardian.ArmorPlate.gameObject.activeSelf);
+        }
+        [UnityTest] public IEnumerator ShiftRejectsPlayerPlatformOverlapSupportsEdgeTransitionAndPreservesPauseHint()
+        {
+            var game = Create(); yield return null; game.Restart(); game.Guardian.enabled = false;
+            Place(game.Player, new Vector3(10f, .15f, 6f));
+            Vector3 blockedPos = game.Player.transform.position;
+            Assert.IsFalse(game.Veil.TryShift(), "Player overlapping incoming Broken terrace must block shift");
+            Assert.AreEqual(VeilState.Living, game.Veil.Current);
+            Assert.AreEqual(blockedPos, game.Player.transform.position);
+            Assert.AreEqual(0f, game.Veil.CooldownRemaining);
+
+            Place(game.Player, new Vector3(-8.2f, .55f, -5f));
+            Assert.IsTrue(game.Veil.TryShift());
+            Assert.AreEqual(VeilState.Broken, game.Veil.Current);
+            Assert.Greater(game.Veil.CooldownRemaining, 0f);
+
+            var hint = root.GetComponentsInChildren<Text>(true).First(t => t.name == "Combat guidance");
+            StringAssert.Contains("BROKEN VEIL", hint.text);
+            game.TogglePause(); Assert.AreEqual(ArenaState.Paused, game.State);
+            game.TogglePause(); Assert.IsTrue(game.IsPlaying);
+            StringAssert.Contains("BROKEN VEIL", hint.text, "Unpausing must preserve active feedback rather than repeating startup tutorial");
+
+            yield return new WaitForSeconds(1.05f);
+            Assert.IsTrue(game.Veil.TryShift()); Assert.AreEqual(VeilState.Living, game.Veil.Current);
+            yield return new WaitForSeconds(1.05f);
+            Assert.IsTrue(game.Veil.TryShift()); Assert.AreEqual(VeilState.Broken, game.Veil.Current);
+            game.Restart();
+            Assert.AreEqual(VeilState.Living, game.Veil.Current);
+            Assert.AreEqual(0f, game.Veil.CooldownRemaining);
+        }
     }
 }

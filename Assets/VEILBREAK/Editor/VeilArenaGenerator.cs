@@ -50,7 +50,7 @@ namespace Veilbreak.Editor
             var settings = LoadSettings("ProjectSettings/ProjectSettings.asset");
             var tags = LoadSettings("ProjectSettings/TagManager.asset");
             var graphics = LoadSettings("ProjectSettings/GraphicsSettings.asset");
-            var backend = RequireProperty(settings, "activeInputHandler");
+            RequireProperty(settings, "activeInputHandler");
             var layers = RequireProperty(tags, "layers");
             if (layers.arraySize <= 8) throw new InvalidOperationException("Environment layer 8 is unavailable.");
             var environment = layers.GetArrayElementAtIndex(8);
@@ -100,10 +100,15 @@ namespace Veilbreak.Editor
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
             PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            // Refresh SerializedObjects after direct PlayerSettings/GraphicsSettings API mutations so Apply does not revert them.
+            settings.Update();
             // StandaloneInputModule and desktop fallback intentionally share the built-in legacy input backend.
-            backend.intValue = 0; settings.ApplyModifiedPropertiesWithoutUndo();
-            environment.stringValue = "Environment";
+            RequireProperty(settings, "activeInputHandler").intValue = 0; settings.ApplyModifiedPropertiesWithoutUndo();
+            tags.Update();
+            RequireProperty(tags, "layers").GetArrayElementAtIndex(8).stringValue = "Environment";
             tags.ApplyModifiedPropertiesWithoutUndo();
+            graphics.Update();
+            shaders = RequireProperty(graphics, "m_AlwaysIncludedShaders");
             // Keep the runtime-created Lit material shader in player builds (no serialized material references exist yet).
             bool exists = false;
             for (int i = 0; i < shaders.arraySize; i++) if (shaders.GetArrayElementAtIndex(i).objectReferenceValue == lit) exists = true;
