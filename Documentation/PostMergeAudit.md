@@ -1,5 +1,7 @@
 # Post-merge source audit and repair — 2026-10-21
 
+> Historical record: Unity 6000.0 / URP 17.0.3 statements below describe the earlier repository baseline and are superseded by [Unity63CompatibilityAudit.md](Unity63CompatibilityAudit.md). The current sole target is Unity **6000.3.26f1** with URP **17.3.0**. This file is retained as historical audit evidence.
+
 ## Baseline and method
 - Clean starting checkout on `arena/b0e1f861-veilbreak`, based on `c1d1b91` (PR #1's merge into main).
 - PR #1 is confirmed MERGED through GitHub. Reviewed its changed-file list and the current runtime, Editor, test, package, metadata and input files.

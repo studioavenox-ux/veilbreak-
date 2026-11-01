@@ -1,5 +1,8 @@
 # Development and test instructions
 
+## Editor and project setup
+Use **Unity 6000.3.26f1 (Unity 6.3 LTS)** consistently. On the development PC, launch `D:\UnityEditors\6000.3.26f1\Editor\Unity.exe` and open this repository's root as an existing project. Keep Android Build Support, Android SDK/NDK Tools, and OpenJDK installed through Unity Hub for that same Editor. Do not create a new starter project or blank SampleScene. See [the Unity 6.3 compatibility audit](Unity63CompatibilityAudit.md) for API/package findings and the remaining unverified local checks.
+
 ## Architecture
 - `Core/VeilbreakBootstrap`: single scene entry point, explicit construction/reference wiring. All scene content is parented under it; no DontDestroyOnLoad or static singleton.
 - `Core/PrimitiveFactory`: small primitive/material factory with material cleanup.
@@ -17,7 +20,7 @@ The runtime also contains `EncounterAudio` (original, generated reusable feedbac
 
 The source separates runtime, Editor and test assemblies. Key tuning defaults have `[SerializeField]`; runtime reference wiring uses explicit properties. Both actors are reused on restart. Event subscriptions are initialized once and removed on destruction. Runtime placeholder art is built once per scene, not per attack or restart.
 
-The project uses the built-in legacy Input Manager, not the new Input System package. `ProjectSettings/InputManager.asset` defines mouse axes and StandaloneInputModule axes. Generator selects legacy handling. Do not change to Input System-only without migrating both runtime polling and the EventSystem module.
+The project uses the built-in legacy Input Manager, not the new Input System package. `ProjectSettings/InputManager.asset` defines mouse axes and StandaloneInputModule axes. Generator selects legacy handling. Do not change to Input System-only without migrating both runtime polling and the EventSystem module. For Android builds the Unity 6.3 generator also assigns App Category `Game` so Android 16 large-screen devices retain the configured landscape orientation.
 
 ## Source-only check (no Unity)
 ```
@@ -33,13 +36,16 @@ Generate the scene/configuration first, exit Play Mode, then open **Window → G
 - **EditMode → Run All:** camera-pointer ownership and input clearing, health clamp/reset/death events, destination penetration rejection against inactive geometry, shared-floor support vs unsupported shift, reactive presence/collider activation.
 - **PlayMode → Run All:** shift position/object presence and warning-text priority, runtime construction, title/play/pause/win/lose/title transitions, repeated same-instance reset, shift cooldown reset and enforcement, and higher exposed-core damage.
 
-For batch testing use your local Unity executable (platform-specific path):
+For batch validation use the exact Windows Editor executable. Close the GUI Editor first so Unity does not contend for the project lock. Run from the repository root in PowerShell:
+```powershell
+$Unity = 'D:\UnityEditors\6000.3.26f1\Editor\Unity.exe'
+$Project = (Get-Location).Path
+New-Item -ItemType Directory -Force Logs | Out-Null
+& $Unity -batchmode -projectPath $Project -executeMethod Veilbreak.Editor.VeilArenaGenerator.GenerateBatch -quit -logFile (Join-Path $Project 'Logs/generate.log')
+& $Unity -batchmode -projectPath $Project -runTests -testPlatform EditMode -testResults (Join-Path $Project 'Logs/editmode.xml') -logFile (Join-Path $Project 'Logs/editmode.log')
+& $Unity -batchmode -projectPath $Project -runTests -testPlatform PlayMode -testResults (Join-Path $Project 'Logs/playmode.xml') -logFile (Join-Path $Project 'Logs/playmode.log')
 ```
-Unity -batchmode -projectPath "$PWD" -executeMethod Veilbreak.Editor.VeilArenaGenerator.GenerateBatch -quit -logFile Logs/generate.log
-Unity -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testResults Logs/editmode.xml -logFile Logs/editmode.log
-Unity -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode -testResults Logs/playmode.xml -logFile Logs/playmode.log
-```
-Create `Logs/` first. Do not use `-quit` with `-runTests`; allow the test runner to terminate after completion. First-run package import or an input-backend change may require a separate Editor launch/restart. A valid Unity license and installed packages/modules are required. No CI build or test success is asserted by the presence of these commands.
+Do not use `-quit` with `-runTests`; allow the test runner to terminate after completion. First-run package import or an input-backend change may require a separate Editor launch/restart. A valid Unity license and Android modules are required for Android-target commands. Inspect each process exit code, test XML, and Editor log. These instructions do not imply that any Unity compile/test has passed.
 
 ## Manual acceptance checklist (not executed here)
 1. Generate, open VeilArena and Play: title visible, no console errors; Start shows exactly one player and guardian.
