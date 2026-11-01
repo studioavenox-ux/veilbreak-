@@ -7,7 +7,7 @@
 ## Changes made
 
 - `ProjectSettings/ProjectVersion.txt` now pins `6000.3.26f1`.
-- `Packages/manifest.json` now pins `com.unity.render-pipelines.universal` to **17.3.0**, the URP 17.3 line associated with Unity 6000.3. The previous 17.0.3 pin belonged to the Unity 6.0 generation. uGUI 2.0.0, Test Framework 1.4.5, and the built-in module package references are retained: this audit found no API use requiring speculative upgrades to them.
+- `Packages/manifest.json` now pins `com.unity.render-pipelines.universal` to **17.3.0**, the URP 17.3 line associated with Unity 6000.3. The previous 17.0.3 pin belonged to the Unity 6.0 generation. The Test Framework pin is updated from **1.4.5** to **1.6.0**, matching the Unity 6.3 core-package line; Unity documents core packages as fixed to an Editor-matched version. uGUI 2.0.0 and built-in module references are retained.
 - `VeilArenaGenerator` now sets `PlayerSettings.Android.appCategory = "game"`. Unity 6.3 documents this setting as the way to preserve fixed orientation behavior on Android 16 large-screen devices. The generator already sets Landscape Left and disables portrait autorotation. It does not use the obsolete `androidIsGame` API.
 - Current setup/build guidance now names the exact Editor version and the supplied Windows executable path.
 - No generated scene, URP asset, `ProjectSettings.asset`, package lock, or replacement project was fabricated. Unity will generate/import these in the existing project on the Windows development PC. Existing assets, scripts, metadata GUIDs, scenes and gameplay are otherwise untouched.
@@ -23,7 +23,7 @@
 | 3D physics | `Physics.RaycastAll`, `Linecast`, `SphereCast`, `CapsuleCast`, `CheckCapsule`, `ComputePenetration`, `SyncTransforms`, `QueryTriggerInteraction`; `CharacterController` | These are classic 3D PhysX APIs; Unity 6.3's new low-level Box2D v3 work concerns 2D and does not replace this code. No `Physics.autoSyncTransforms` reference is present. | Run physics/shift/combat/navigation tests in both Unity test platforms; manually validate collisions and frame cost. |
 | Editor scripting | `MenuItem`, `AssetDatabase`, `SerializedObject`, `EditorSceneManager`, `EditorBuildSettings`, `BuildPipeline`, `NamedBuildTarget`, `BuildReport` | No known 6.3 removal found. The generator's serialized settings-field names are Unity internals and therefore need exact-version runtime validation even when the public APIs compile. This repository deliberately has no fabricated scene/settings serialization. | In the target Editor, import, inspect Console, generate twice, check scene/build profile and stable generated asset GUIDs; exercise documented recovery cases. |
 | Android | Landscape Left, portrait autorotation disabled, Android API 26 minimum, ARM64, IL2CPP, Build Profiles, development APK builder | Unity 6.3 introduces Android 16 large-screen handling: fixed orientation may be ignored unless the app is categorized as a game. Set the documented `PlayerSettings.Android.appCategory` to `game`; avoid obsolete `androidIsGame`. No custom Gradle templates or Android manifests exist in this checkout. | Install Android Build Support, SDK/NDK and OpenJDK through Hub for **6000.3.26f1**; switch to Android; build and install APK; validate orientation, app resume, permissions and devices. |
-| Tests | Test Framework attributes and `UnityEngine.TestTools` in existing EditMode/PlayMode assemblies | `com.unity.test-framework` remains pinned at 1.4.5. Test source only; not executed by this audit. No test API in use was identified as 6.3-removed. | First resolve packages, then run both suites in the exact Editor and archive XML/log results. |
+| Tests | Test Framework attributes and `UnityEngine.TestTools` in existing EditMode/PlayMode assemblies | The prior manifest pinned `com.unity.test-framework` 1.4.5, although Test Framework is a Unity 6.3 core package whose version is fixed to the Editor line. Updated to 1.6.0. Test source only; not executed by this audit. No test API in use was identified as 6.3-removed. | Confirm the Editor resolves its matching core package; run both suites in the exact Editor and archive XML/log results. |
 
 ## Deprecated, removed, or changed API scan
 
@@ -61,6 +61,7 @@ The command-line equivalents and APK/device acceptance gates are in [ReleaseCand
 ## References
 
 - [Unity 6.3 URP requirements and Editor compatibility](https://docs.unity3d.com/6000.3/Documentation/Manual/urp/requirements.html)
+- [Unity 6.3 core packages](https://docs.unity3d.com/6000.3/Documentation/Manual/pack-core.html) and [Test Framework package](https://docs.unity3d.com/6000.3/Documentation/Manual/com.unity.test-framework.html)
 - [URP 17.3 changelog](https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.3/changelog/CHANGELOG.html)
 - [Unity 6.3 upgrade guide](https://docs.unity3d.com/6000.3/Documentation/Manual/UpgradeGuideUnity63.html)
 - [Unity 6.3 Android large-screen behavior and App Category](https://docs.unity3d.com/6000.3/Documentation/Manual/android-large-screen-and-foldable-support.html)

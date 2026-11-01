@@ -10,7 +10,7 @@ This is native Unity gameplay, not a web app. All character, enemy, and environm
 ## Requirements
 - **Unity 6000.3.26f1** (Unity 6.3 LTS), installed through Unity Hub. This is the project's sole intended editor version.
 - Android Build Support, Android SDK/NDK Tools, and OpenJDK for Android builds.
-- Packages declared in `Packages/manifest.json`: **URP 17.3.0** (Unity 6.3 line), **Unity UI 2.0.0**, **Test Framework 1.4.5**, and built-in modules. No paid packages or runtime internet services.
+- Packages declared in `Packages/manifest.json`: **URP 17.3.0** (Unity 6.3 line), **Unity UI 2.0.0**, **Test Framework 1.6.0**, and built-in modules. No paid packages or runtime internet services.
 - The Editor needs internet on first import to resolve Unity packages. The built game is offline.
 - See the [Unity 6.3 compatibility audit](Documentation/Unity63CompatibilityAudit.md) for the version migration, API/package findings and the unverified local validation checklist.
 
