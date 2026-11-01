@@ -46,7 +46,7 @@ namespace Veilbreak.Editor
             Directory.CreateDirectory("Assets/VEILBREAK/Materials");
             // Fail before creating a scene if packages/settings are unavailable or a path belongs to another asset.
             var lit = Shader.Find("Universal Render Pipeline/Lit");
-            if (!lit) throw new InvalidOperationException("URP Lit shader unavailable. Finish importing URP 17.0.3, then generate again.");
+            if (!lit) throw new InvalidOperationException("URP Lit shader unavailable. Finish importing URP 17.3.0, then generate again.");
             var settings = LoadSettings("ProjectSettings/ProjectSettings.asset");
             var tags = LoadSettings("ProjectSettings/TagManager.asset");
             var graphics = LoadSettings("ProjectSettings/GraphicsSettings.asset");
@@ -98,6 +98,8 @@ namespace Veilbreak.Editor
             PlayerSettings.allowedAutorotateToPortrait = false; PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
             PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android, "com.avenoxgames.veilbreak");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
+            // Android 16 can ignore fixed orientation on large screens unless this app is categorized as a game.
+            PlayerSettings.Android.appCategory = "game";
             PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             // Refresh SerializedObjects after direct PlayerSettings/GraphicsSettings API mutations so Apply does not revert them.
@@ -124,7 +126,7 @@ namespace Veilbreak.Editor
         static SerializedProperty RequireProperty(SerializedObject asset, string name)
         {
             var property = asset.FindProperty(name);
-            if (property == null) throw new InvalidOperationException($"Required Unity 6000.0 setting missing: {name}.");
+            if (property == null) throw new InvalidOperationException($"Required Unity 6000.3 setting missing: {name}.");
             return property;
         }
         static T LoadGeneratedAsset<T>(string path) where T : UnityEngine.Object

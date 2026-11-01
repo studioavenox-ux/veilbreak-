@@ -20,7 +20,7 @@ This branch is a **source-level development candidate**, not a verified release.
 **Not established by source inspection:** actual package resolution/compilation, physics query correctness, camera feel, pathfinding/frame-time cost, combat balance, audio output and real multi-touch. Added tests are not proof these work until executed.
 
 ## Beginner run sequence
-1. Install Unity **6000.0.38f1** through Hub with Android Build Support, SDK/NDK Tools and OpenJDK.
+1. Install Unity **6000.3.26f1 (Unity 6.3 LTS)** through Hub with Android Build Support, SDK/NDK Tools and OpenJDK. The development PC Editor is `D:\UnityEditors\6000.3.26f1\Editor\Unity.exe`; run all project checks with this exact Editor.
 2. Hub → Add existing project → select this repository root. Open it and wait for package imports. Resolve Console errors before proceeding.
 3. Outside Play Mode choose **VEILBREAK → Generate Veil Arena**. Allow any requested legacy-input-backend Editor restart, then generate again. Generation overwrites the generated scene, not the source. It creates actual URP assets and registers the scene via Editor APIs.
 4. Open `Assets/VEILBREAK/Scenes/VeilArena.unity`. Press Play, then **Start Encounter**. The courtyard, actors and native UI are built at runtime.
@@ -29,15 +29,17 @@ This branch is a **source-level development candidate**, not a verified release.
 7. Window → General → Test Runner: run **EditMode**, then **PlayMode**, including `EncounterReliabilityTests` and `SceneArtTests`. Save XML/log results and note exact Unity version.
 
 ## Repeatable Android development build
-First switch the active build target to Android in File → Build Profiles (wait for reimport). Then use **VEILBREAK → Build Android Development APK**. It generates/configures the scene, builds only VeilArena explicitly, restores the previous bundle flag, and throws if the build fails. Output: `Builds/Android/VEILBREAK-development.apk` (ignored). Requirements: ARM64 / IL2CPP / minimum API 26; target SDK automatic as installed. Default debug signing is for internal testing only. No signing keys are stored in the project.
+First switch the active build target to Android in File → Build Profiles (wait for reimport). Then use **VEILBREAK → Build Android Development APK**. It generates/configures the scene, builds only VeilArena explicitly, restores the previous bundle flag, and throws if the build fails. Output: `Builds/Android/VEILBREAK-development.apk` (ignored). Requirements: ARM64 / IL2CPP / minimum API 26; target SDK automatic as installed; landscape-left and Android App Category Game (for Android 16 large-screen orientation behavior). Default debug signing is for internal testing only. No signing keys are stored in the project.
 
-Equivalent separate batch invocations, replacing `Unity` with your installed executable:
-```
-mkdir -p Logs
-Unity -batchmode -projectPath "$PWD" -buildTarget Android -executeMethod Veilbreak.Editor.VeilArenaGenerator.GenerateBatch -quit -logFile Logs/generate.log
-Unity -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testResults Logs/editmode.xml -logFile Logs/editmode.log
-Unity -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode -testResults Logs/playmode.xml -logFile Logs/playmode.log
-Unity -batchmode -projectPath "$PWD" -buildTarget Android -executeMethod Veilbreak.Editor.AndroidBuild.BuildDevelopment -quit -logFile Logs/android-build.log
+Equivalent separate batch invocations in PowerShell from the repository root (close the GUI Editor first):
+```powershell
+$Unity = 'D:\UnityEditors\6000.3.26f1\Editor\Unity.exe'
+$Project = (Get-Location).Path
+New-Item -ItemType Directory -Force Logs | Out-Null
+& $Unity -batchmode -projectPath $Project -buildTarget Android -executeMethod Veilbreak.Editor.VeilArenaGenerator.GenerateBatch -quit -logFile (Join-Path $Project 'Logs/generate.log')
+& $Unity -batchmode -projectPath $Project -runTests -testPlatform EditMode -testResults (Join-Path $Project 'Logs/editmode.xml') -logFile (Join-Path $Project 'Logs/editmode.log')
+& $Unity -batchmode -projectPath $Project -runTests -testPlatform PlayMode -testResults (Join-Path $Project 'Logs/playmode.xml') -logFile (Join-Path $Project 'Logs/playmode.log')
+& $Unity -batchmode -projectPath $Project -buildTarget Android -executeMethod Veilbreak.Editor.AndroidBuild.BuildDevelopment -quit -logFile (Join-Path $Project 'Logs/android-build.log')
 ```
 Do not use `-quit` on test invocations. First-run input/backend/package changes may require reopening Unity before tests/build. Inspect every exit code, Test Runner failure count and log. A successful build command does not certify tests or runtime behavior.
 

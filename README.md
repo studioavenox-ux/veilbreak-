@@ -8,14 +8,15 @@ A Unity 6 / URP foundation for a single-player, landscape Android third-person a
 This is native Unity gameplay, not a web app. All character, enemy, and environment art is clearly identified procedural primitive placeholder geometry inspired by the four supplied concept boards. There are no imported models, rigs, animations, or pretend finished assets.
 
 ## Requirements
-- **Unity 6000.0.38f1** (Unity 6.0), installed through Unity Hub.
+- **Unity 6000.3.26f1** (Unity 6.3 LTS), installed through Unity Hub. This is the project's sole intended editor version.
 - Android Build Support, Android SDK/NDK Tools, and OpenJDK for Android builds.
-- Packages declared in `Packages/manifest.json`: **URP 17.0.3**, **Unity UI 2.0.0**, **Test Framework 1.4.5**, and built-in modules. No paid packages or runtime internet services.
+- Packages declared in `Packages/manifest.json`: **URP 17.3.0** (Unity 6.3 line), **Unity UI 2.0.0**, **Test Framework 1.4.5**, and built-in modules. No paid packages or runtime internet services.
 - The Editor needs internet on first import to resolve Unity packages. The built game is offline.
+- See the [Unity 6.3 compatibility audit](Documentation/Unity63CompatibilityAudit.md) for the version migration, API/package findings and the unverified local validation checklist.
 
 ## Open and run
 1. Clone this repository and add its **root** to Unity Hub as an existing project. Do not create another project inside it.
-2. Open with the version above and wait for package import/compilation.
+2. Open with **Unity 6000.3.26f1** and wait for package import/compilation. On the development PC, the Editor executable is `D:\UnityEditors\6000.3.26f1\Editor\Unity.exe`. Do not upgrade the project to a different Editor version without a reviewed technical reason.
 3. Choose **VEILBREAK → Generate Veil Arena**. Save other work when prompted.
 4. The utility configures URP, landscape Android defaults, the legacy input backend, environment layer 8, shader preservation, and the build scene list. If Unity requests an input-backend restart, allow it, then run the command again.
 5. It saves **`Assets/VEILBREAK/Scenes/VeilArena.unity`** using Unity Editor APIs. This source checkout intentionally does **not** contain a hand-written scene or serialized URP assets. The generated scene has one `VeilbreakBootstrap` entry point; the arena is constructed **when entering Play Mode**, not in the edit-time Scene view.
@@ -51,7 +52,7 @@ See [arena layout](Documentation/VeilArena.md), [shift rules](Documentation/Real
 
 ## Android build
 1. Generate the scene first. Open **File → Build Profiles**, add/switch to **Android**, and include `VeilArena` (the generator enables it).
-2. Defaults: package `com.avenoxgames.veilbreak`, landscape-left, minimum Android API 26, ARM64, IL2CPP. Keep target API automatic or select the SDK required for your distribution. Confirm the identifier and signing policy before publishing.
+2. Defaults: package `com.avenoxgames.veilbreak`, landscape-left, Android App Category `Game`, minimum Android API 26, ARM64, IL2CPP. The Game category preserves fixed-orientation behavior on Android 16 large-screen devices. Keep target API automatic or select the SDK required for your distribution. Confirm the identifier and signing policy before publishing.
 3. With Android active, use **VEILBREAK → Build Android Development APK** for the repeatable single-scene build. It writes `Builds/Android/VEILBREAK-development.apk`, checks the build result and is unaffected by a profile scene-list override. This is an internal development candidate, not a store-signed release.
 4. Alternatively, use a Development Build for initial checks. Choose **Build** or **Build And Run** to your own ignored `Builds/Android/` directory. Device debugging/USB authorization must be configured locally.
 5. Test safe areas, simultaneous touch, thermal behavior, frame time, and memory on physical hardware. Profile before adjusting target frame rate, render scale, or shadows.
