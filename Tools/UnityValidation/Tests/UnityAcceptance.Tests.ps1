@@ -375,6 +375,68 @@ Test-Case 'An inconsistent testcasecount fails the gate' {
     Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
 }
 
+# --- run-level result consistency --------------------------------------------------------
+Test-Case 'A Failed run result with no failed case fails the gate' {
+    $path = Save-Xml @'
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" total="1" passed="1" failed="0" result="Failed">
+  <test-suite result="Failed"><failure><message>teardown failed</message></failure>
+    <test-case name="Only" result="Passed" />
+  </test-suite>
+</test-run>
+'@
+    $script:tempFiles.Add($path)
+    $results = Read-NUnitResults -Path $path
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'test-run result is Failed' }).Count -eq 1) `
+        'a Failed run result must be checked against the case nodes, not merely displayed'
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'An Error run result with no failed case fails the gate' {
+    $path = Save-Xml @'
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" total="1" passed="1" failed="0" result="Error">
+  <test-suite><test-case name="Only" result="Passed" /></test-suite>
+</test-run>
+'@
+    $script:tempFiles.Add($path)
+    $results = Read-NUnitResults -Path $path
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'test-run result is Error' }).Count -eq 1)
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'A Passed run result with a failed case is flagged' {
+    $path = Save-Xml @'
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" total="1" passed="0" failed="1" result="Passed">
+  <test-suite><test-case name="Only" result="Failed"><failure><message>boom</message></failure></test-case></test-suite>
+</test-run>
+'@
+    $script:tempFiles.Add($path)
+    $results = Read-NUnitResults -Path $path
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'test-run result is Passed' }).Count -eq 1)
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'A consistent Failed run result adds no problem' {
+    $results = New-Results -Cases @(@{ Name = 'Only'; Result = 'Failed' })
+    Assert-Equal 0 $results.Problems.Count 'a Failed run result with a failed case is consistent'
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State 'the failed case itself still fails the gate'
+}
+
+Test-Case 'An absent run result makes no claim' {
+    $path = Save-Xml @'
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" total="1" passed="1" failed="0">
+  <test-suite><test-case name="Only" result="Passed" /></test-suite>
+</test-run>
+'@
+    $script:tempFiles.Add($path)
+    $results = Read-NUnitResults -Path $path
+    Assert-Equal 0 $results.Problems.Count
+    Assert-Equal 'PASS' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
 # --- Warning results ------------------------------------------------------------------
 Test-Case 'A warning is counted separately and named, not dropped' {
     $results = New-Results -Cases @(

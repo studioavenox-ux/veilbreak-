@@ -33,11 +33,13 @@ ENCOUNTER_CASES = [
 ]
 
 
-def nunit_xml(cases, summary=None, testcasecount=None):
+def nunit_xml(cases, summary=None, testcasecount=None, run_result=None):
     """Builds NUnit XML the way Unity's Test Runner does (test-run root + test-case nodes).
 
     `summary` overrides individual attributes so tests can deliberately write a summary that
     disagrees with the case nodes, which is exactly what the acceptance gate must reject.
+    `run_result` overrides the run-level result; when omitted this fixture uses Failed when a case
+    failed and Passed otherwise, matching the Pester fixture builder (not all NUnit precedence rules).
     """
     passed = sum(1 for _, r in cases if r == 'Passed')
     failed = sum(1 for _, r in cases if r == 'Failed')
@@ -52,6 +54,8 @@ def nunit_xml(cases, summary=None, testcasecount=None):
         else:
             children.append(f'<test-case name="{name}" result="{result}" />')
     count_attr = f' testcasecount="{testcasecount}"' if testcasecount is not None else ''
+    if run_result is None:
+        run_result = 'Failed' if failed > 0 else 'Passed'
     derived = {'total': total, 'passed': passed, 'failed': failed, 'skipped': skipped}
     # Required attributes always appear; optional ones (skipped, inconclusive, warnings) appear only
     # when the test supplies them, so "absent attribute" cases can be exercised.
@@ -62,7 +66,7 @@ def nunit_xml(cases, summary=None, testcasecount=None):
         f' {key}="{value}"' for key, value in numbers.items()
         if key not in required)
     return ('<?xml version="1.0" encoding="utf-8"?>\n'
-            f'<test-run id="2"{attributes}{optional}{count_attr} result="Passed">'
+            f'<test-run id="2"{attributes}{optional}{count_attr} result="{run_result}">'
             f'<test-suite>{"".join(children)}</test-suite></test-run>')
 
 
@@ -89,6 +93,7 @@ def module_rules():
         'compares_inconclusive_summary': "-Label 'inconclusive'" in text,
         'compares_warnings_summary': "-Label 'warnings'" in text,
         'compares_testcasecount': 'testcasecount (' in text,
+        'checks_run_result': 'test-run result is' in text,
         'warnings_are_separate': 'WarningCaseNames' in text,
         'duplicate_names_detected': 'Duplicate test-case name(s)' in text,
         'required_cases_report_ambiguity': 'matched more than one distinct test' in text,
@@ -150,6 +155,7 @@ class Mirror:
             return info
 
         info['parsed'] = True
+        info['run_result'] = root.get('result')
         cases = list(root.iter('test-case'))
         info['cases'] = cases
         info['total'] = len(cases)
@@ -206,6 +212,12 @@ class Mirror:
         if testcasecount is not None and testcasecount != info['total']:
             info['problems'].append(
                 f'Summary testcasecount ({testcasecount}) disagrees with the {info["total"]} test-case nodes.')
+
+        run_result = (info['run_result'] or '').lower()
+        if run_result in ('failed', 'error') and info['failed'] == 0:
+            info['problems'].append(f"test-run result is {info['run_result']} but no test-case failed.")
+        elif run_result == 'passed' and info['failed'] > 0:
+            info['problems'].append(f"test-run result is Passed but {info['failed']} test-case(s) failed.")
 
         return info
 
@@ -324,6 +336,29 @@ class AcceptanceReportingTests(unittest.TestCase):
         info = self.results([('Only', 'Passed')], summary={'total': 5, 'passed': 5, 'failed': 0, 'skipped': 0})
         self.assertTrue(info['problems'], 'a lying summary must be reported')
         self.assertEqual('FAIL', Mirror.gate(info, exit_code=0)[0])
+
+    def test_failed_or_error_run_result_cannot_pass_with_only_passing_cases(self):
+        for outcome in ('Failed', 'Error', 'failed'):
+            with self.subTest(outcome=outcome):
+                info = Mirror.read_results(self.write(nunit_xml([('A', 'Passed')], run_result=outcome)))
+                self.assertTrue(any('test-run result is' in p for p in info['problems']))
+                self.assertEqual('FAIL', Mirror.gate(info, 0)[0])
+
+    def test_passed_run_with_failure_is_flagged(self):
+        info = Mirror.read_results(self.write(nunit_xml([('A', 'Failed')], run_result='Passed')))
+        self.assertTrue(any('test-run result is Passed' in p for p in info['problems']))
+        self.assertEqual('FAIL', Mirror.gate(info, 0)[0])
+
+    def test_consistent_failed_run_has_no_result_problem(self):
+        info = self.results([('A', 'Failed')])
+        self.assertEqual([], info['problems'])
+        self.assertEqual('FAIL', Mirror.gate(info, 0)[0])
+
+    def test_missing_run_result_makes_no_claim(self):
+        xml = nunit_xml([('A', 'Passed')]).replace(' result="Passed"><test-suite>', '><test-suite>')
+        info = Mirror.read_results(self.write(xml))
+        self.assertEqual([], info['problems'])
+        self.assertEqual('PASS', Mirror.gate(info, 0)[0])
 
     # --- 2b. summary-vs-node consistency (final audit) ----------------------------------
     def test_inflated_passed_summary_fails_the_gate(self):

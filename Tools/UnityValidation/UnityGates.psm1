@@ -9,6 +9,8 @@
     Design rules encoded below (each has a regression test):
       * A gate passes only when the tool actually succeeded: exit code AND artefact AND content.
       * NUnit XML must parse, must name a run, and must report >= 1 passed test with 0 failed.
+      * Present numeric summary counts are checked against the test-case nodes. A Failed/Error
+        run result cannot pass even when all case nodes passed (e.g. a suite teardown failure).
       * Skipped and inconclusive tests stay visible - they are never folded into "passed" or
         silently dropped from the summary line.
       * Required encounter cases must each be present AND passed; a missing case is a failure,
@@ -68,6 +70,7 @@ function Read-NUnitResults {
     Every count is derived from the test-case nodes first; each summary attribute is then compared
     against the derived count and any disagreement becomes a Problem (which fails the gate).
     Attributes that are absent or not numeric make no claim and are not reported as inconsistent.
+    Run-level Failed/Error results also fail the gate when no test case failed (see below).
 
     NUnit result vocabulary and how each is treated:
       Passed       - satisfies the pass requirement.
@@ -184,6 +187,22 @@ function Read-NUnitResults {
     # testcasecount is NUnit's own tally of cases; it must agree when present.
     if ($null -ne $result.TestCaseCount -and $result.TestCaseCount -ne $result.Total) {
         $problems.Add("Summary testcasecount ($($result.TestCaseCount)) disagrees with the $($result.Total) test-case nodes.")
+    }
+
+    # A Failed/Error run can reflect a suite-level failure even when every case passed (for example,
+    # teardown failed). Never report that run as a pass. A Passed run with failed cases is also
+    # flagged. Warning/Skipped/Inconclusive run results are deliberately not
+    # cross-checked: their precedence rules vary by NUnit version and they never change the verdict
+    # on their own. An absent result makes no claim. Comparison is case-insensitive, matching the
+    # case-insensitive result matching above.
+    if ($result.RunResult -eq 'Failed' -or $result.RunResult -eq 'Error') {
+        if ($result.Failed -eq 0) {
+            $problems.Add("test-run result is $($result.RunResult) but no test-case failed.")
+        }
+    } elseif ($result.RunResult -eq 'Passed') {
+        if ($result.Failed -gt 0) {
+            $problems.Add("test-run result is Passed but $($result.Failed) test-case(s) failed.")
+        }
     }
 
     return $result

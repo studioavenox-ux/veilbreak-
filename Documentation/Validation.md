@@ -237,3 +237,24 @@ A repeated identical node is recorded as a `Duplicate test-case name(s)` problem
    among the results above.
 3. No Unity Editor, Android SDK, or device is present, so no gate in `Run-UnityGates.ps1` was
    executed. Our own headless simulation is not Unity.
+
+### NUnit run-result audit (2026-11-18)
+
+A failed NUnit run can contain only passing test-case nodes when a suite-level operation such as
+teardown fails. Previously, a zero Unity exit code and passing case counts could incorrectly report
+that run as PASS. The reporting module now fails a `Failed` or `Error` run result even when no case
+failed, and flags `Passed` when a case failed. Matching is case-insensitive. Absent run results make
+no additional claim; Warning, Skipped and Inconclusive run results are not cross-checked here.
+The Pester fixtures include a suite teardown failure; the Python mirror independently exercises the
+same verdicts, including a lowercase run result.
+
+Executed: `bash Tools/UnityValidation/verify.sh` (tree-sitter parsed all three files; 60 Python
+regressions passed) and `.venv/bin/python -m unittest discover -s Tools` (64 passed). PowerShell's
+own parser could not load on this host; neither the PowerShell/Pester tests nor the Unity/Android
+gates were executed. The Python mirror and grammar check do not replace running them on Windows.
+
+Reverification: the same 60 tooling tests and 64 discovery tests passed; the headless simulation
+reported 138 checks passed and 17 mock EditMode tests executed (2 skipped). Offline typechecking
+passed after staging the Unity reference sources; its UnityEngine reference build emitted 4,933
+warnings. Source validation parsed 30 C# files and checked 52 GUIDs. These are not Unity Editor
+runs; native PowerShell parsing and the 40 PowerShell test cases remain unexecuted here.
