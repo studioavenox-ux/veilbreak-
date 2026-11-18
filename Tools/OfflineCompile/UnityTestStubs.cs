@@ -57,6 +57,13 @@ namespace NUnit.Framework
         public static void AreNotEqual(float expected, float actual, float delta) { }
         public static void AreNotEqual(float expected, float actual, float delta, string message) { }
 
+        public static void IsNotEmpty(System.Collections.IEnumerable collection) { }
+        public static void IsNotEmpty(System.Collections.IEnumerable collection, string message) { }
+        public static void IsNotEmpty(string value) { }
+        public static void IsNotEmpty(string value, string message) { }
+        public static void IsEmpty(System.Collections.IEnumerable collection) { }
+        public static void IsEmpty(System.Collections.IEnumerable collection, string message) { }
+
         public static void AreSame(object expected, object actual) { }
         public static void AreSame(object expected, object actual, string message) { }
         public static void AreNotSame(object expected, object actual) { }

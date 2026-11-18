@@ -104,6 +104,80 @@ namespace Veilbreak.Sim
                 Check("guardian armour visible", world.Game.Guardian.ArmorPlate.gameObject.activeSelf);
             });
 
+            Case("Simulated courtyard is built from the shared ArenaLayout definition", () =>
+            {
+                var world = Scene.Build();
+                var root = world.Root.transform;
+                var solids = new List<BoxCollider>();
+                foreach (var collider in root.GetComponentsInChildren<BoxCollider>(true)) solids.Add(collider);
+
+                var byName = new Dictionary<string, List<BoxCollider>>();
+                foreach (var col in solids)
+                {
+                    if (!byName.TryGetValue(col.gameObject.name, out var list)) byName[col.gameObject.name] = list = new List<BoxCollider>();
+                    list.Add(col);
+                }
+
+                int expected = 0, matched = 0;
+                // Walk the same yield order the scene art uses, resolving each shape to world space so
+                // nested pieces (pier boxes under their column group) are compared correctly.
+                var actual = new List<BoxCollider>(solids);
+                foreach (var box in ArenaLayout.AllSolidShapes())
+                {
+                    expected++;
+                    BoxCollider hit = null;
+                    for (int i = 0; i < actual.Count && hit == null; i++)
+                    {
+                        var col = actual[i];
+                        if (col.gameObject.name != box.Name) continue;
+                        if ((col.size - box.Size).magnitude > .0005f) continue;
+                        if ((col.transform.TransformPoint(col.center) - (root.position + root.rotation * box.Center)).magnitude > .01f) continue;
+                        hit = col;
+                    }
+                    if (hit == null) { Check("sim matches " + box, false); continue; }
+                    actual.Remove(hit);
+                    matched++;
+                }
+                // Only the three extra boundary stones remain: the layout describes one wall box, and the
+                // scene builds it once per courtyard side.
+                Check("every layout shape exists in the simulation", matched == ArenaLayout.SolidShapeCount,
+                    matched + "/" + ArenaLayout.SolidShapeCount + " matched");
+                foreach (var leftover in actual)
+                    Check("leftover collider is a boundary stone", leftover.gameObject.name == ArenaLayout.ParapetStone.Name,
+                        leftover.gameObject.name);
+                Check("wall stones are laid out once per side", byName[ArenaLayout.ParapetStone.Name].Count == 4);
+                foreach (var col in solids)
+                    Check("solid layer for " + col.gameObject.name, col.gameObject.layer == ArenaLayout.SolidLayer, col.gameObject.layer.ToString());
+
+                var veil = world.Game.Veil;
+                Check("reactive group count matches the layout", veil.Objects.Length == ArenaLayout.ReactiveStructures.Length,
+                    veil.Objects.Length + " vs " + ArenaLayout.ReactiveStructures.Length);
+                for (int i = 0; i < ArenaLayout.ReactiveStructures.Length && i < veil.Objects.Length; i++)
+                {
+                    var structure = ArenaLayout.ReactiveStructures[i];
+                    var reactive = veil.Objects[i];
+                    Check("reactive " + i + " is " + structure.Name, reactive.name == structure.Name, reactive.name);
+                    Check("reactive " + structure.Name + " state", reactive.ActiveState == structure.State, reactive.ActiveState.ToString());
+                    Check("reactive " + structure.Name + " shape count",
+                        reactive.GetComponentsInChildren<BoxCollider>(true).Length == structure.Boxes.Length);
+                }
+
+                // The actors must be placed by the layout too, not by a re-typed spawn vector.
+                Near("player spawn y", ArenaLayout.PlayerSpawn.Center.y, world.Game.Player.transform.position.y, 0.02f);
+                Check("player spawn xz",
+                    Vector3.ProjectOnPlane(world.Game.Player.transform.position - ArenaLayout.PlayerSpawn.Center, Vector3.up).magnitude < 0.15f,
+                    world.Game.Player.transform.position.ToString());
+                var bossBody = world.Game.Guardian.GetComponent<CharacterController>();
+                Near("guardian collider height", ArenaLayout.GuardianColliderHeight, bossBody.height, 0.0001f);
+                Near("guardian collider radius", ArenaLayout.GuardianColliderRadius, bossBody.radius, 0.0001f);
+
+                // A spot check that the layout is what actually blocks movement: the Living cover is solid.
+                var coverCol = byName["Living route cover"][0];
+                Check("living cover blocks a capsule", Physics.CheckCapsule(
+                    coverCol.transform.position - Vector3.up * 1.5f,
+                    coverCol.transform.position + Vector3.up * 1.5f, .34f, 1 << ArenaLayout.SolidLayer, QueryTriggerInteraction.Ignore));
+            });
+
             Case("Melee lands once after windup for reduced Living Veil damage", () =>
             {
                 var world = Scene.Build();
@@ -425,7 +499,12 @@ namespace Veilbreak.Sim
             Console.WriteLine();
             Console.WriteLine("RESULT " + (failed == 0 ? "SIMULATION PASSED" : "SIMULATION FAILED") +
                               " - " + passed + " checks passed, " + failed + " failed");
-            return failed == 0 && EngineSelfTest.Failures == 0 ? 0 : 1;
+            Console.WriteLine();
+
+            // Execute the real EditMode test sources that only need plain data. This is not the Unity
+            // Test Runner, but it does mean the layout invariants are actually executed, not just compiled.
+            int editModeFailed = EditModeRunner.Run();
+            return failed == 0 && EngineSelfTest.Failures == 0 && editModeFailed == 0 ? 0 : 1;
         }
     }
 
@@ -466,74 +545,51 @@ namespace Veilbreak.Sim
             Roots.Add(Current.Root);
             var root = Current.Root.transform;
 
-            // --- courtyard collision (mirrors PrototypeSceneArt geometry that gameplay depends on) ---
-            Floor(root, "Shared courtyard foundation", new Vector3(0f, -.5f, 0f), new Vector3(32f, 1f, 32f));
-            // Mirrors PrototypeSceneArt: a rotated group whose child box sits 16 m out along local +Z.
+            // --- courtyard collision: built from ArenaLayout, the same data PrototypeSceneArt uses ---
+            SolidBox(root, ArenaLayout.Floor.Name, ArenaLayout.Floor.Center, ArenaLayout.Floor.Size);
+            var boundary = ArenaLayout.ParapetStone;
             for (int side = 0; side < 4; side++)
             {
-                var wall = new GameObject("parapet " + side);
+                var wall = new GameObject("Courtyard broken parapet " + side);
                 wall.transform.SetParent(root, false);
                 wall.transform.localRotation = Quaternion.Euler(0f, side * 90f, 0f);
-                var stone = new GameObject("Boundary stone");
-                stone.layer = 8;
+                var stone = new GameObject(boundary.Name);
+                stone.layer = ArenaLayout.SolidLayer;
                 stone.transform.SetParent(wall.transform, false);
-                stone.transform.localPosition = new Vector3(0f, 1f, 16f);
-                Box(stone, new Vector3(33f, 2f, .8f));
+                stone.transform.localPosition = boundary.Center;
+                Box(stone, boundary.Size);
             }
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < ArenaLayout.Piers.Length; i++)
             {
-                float angle = (i * 45 + 22.5f) * Mathf.Deg2Rad;
-                float height = i % 3 == 0 ? 2.0f : i % 3 == 1 ? 3.6f : 4.7f;
-                var pier = new GameObject("pier " + i);
-                pier.transform.SetParent(root, false);
-                pier.layer = 8;
-                var box = pier.AddComponent<BoxCollider>();
-                box.size = new Vector3(.86f, height, .86f);
-                pier.transform.localPosition = new Vector3(Mathf.Sin(angle) * 13.8f, height * .5f, Mathf.Cos(angle) * 13.8f);
+                var pier = ArenaLayout.Piers[i];
+                SolidBox(root, pier.Box.Name, pier.Box.Center, pier.Box.Size);
+                SolidBox(root, pier.Plinth.Name, pier.Plinth.Center, pier.Plinth.Size);
             }
-            // Living / Broken route cover, terraces and arches that change collision.
-            var livingCover = new GameObject("Living route cover");
-            livingCover.layer = 8;
-            livingCover.transform.SetParent(root, false);
-            livingCover.transform.localPosition = new Vector3(-7f, 1f, 1f);
-            Box(livingCover, new Vector3(1.4f, 2f, 5f));
-            var brokenCover = new GameObject("Broken route stone chunk");
-            brokenCover.layer = 8;
-            brokenCover.transform.SetParent(root, false);
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < ArenaLayout.ArchPiers.Length; i++)
             {
-                float h = 1.4f + i * .3f;
-                var chunk = new GameObject("chunk " + i);
-                chunk.layer = 8;
-                chunk.transform.SetParent(brokenCover.transform, false);
-                chunk.transform.localPosition = new Vector3(7f, h * .5f, -.65f + i * 1.65f);
-                Box(chunk, new Vector3(1.4f, h, 1.5f));
+                var arch = ArenaLayout.ArchPiers[i];
+                SolidBox(root, arch.Name, arch.Center, arch.Size);
             }
-            brokenCover.SetActive(false);
-            var livingTerrace = new GameObject("Living terrace");
-            livingTerrace.layer = 8;
-            livingTerrace.transform.SetParent(root, false);
-            livingTerrace.transform.localPosition = new Vector3(-10f, .2f, -5f);
-            Box(livingTerrace, new Vector3(4f, .4f, 4f));
-            var brokenTerrace = new GameObject("Broken terrace");
-            brokenTerrace.layer = 8;
-            brokenTerrace.transform.SetParent(root, false);
-            for (int i = 0; i < 3; i++)
-            {
-                var slab = new GameObject("slab " + i);
-                slab.layer = 8;
-                slab.transform.SetParent(brokenTerrace.transform, false);
-                slab.transform.localPosition = new Vector3(8.65f + i * 1.35f, .2f, 6f + (i == 1 ? .17f : 0f));
-                Box(slab, new Vector3(1.2f, .4f, 3.7f));
-            }
-            brokenTerrace.SetActive(false);
+            var pedestal = ArenaLayout.ReliquaryPedestal;
+            SolidBox(root, pedestal.Name, pedestal.Center, pedestal.Size);
 
-            // --- reactive objects: the two route groups + terraces ---
+            // Route cover and terraces: one reactive group per ArenaLayout structure, in the same
+            // order, so the reality shift enables exactly the same shapes as the real scene.
             var reactiveObjects = new List<VeilReactiveObject>();
-            AddReactive(livingCover, VeilState.Living, reactiveObjects);
-            AddReactive(brokenCover, VeilState.Broken, reactiveObjects);
-            AddReactive(livingTerrace, VeilState.Living, reactiveObjects);
-            AddReactive(brokenTerrace, VeilState.Broken, reactiveObjects);
+            for (int g = 0; g < ArenaLayout.ReactiveStructures.Length; g++)
+            {
+                var structure = ArenaLayout.ReactiveStructures[g];
+                var group = new GameObject(structure.Name);
+                group.transform.SetParent(root, false);
+                for (int i = 0; i < structure.Boxes.Length; i++)
+                {
+                    var shape = structure.Boxes[i];
+                    SolidBox(group.transform, shape.Name, shape.Center, shape.Size);
+                }
+                var reactive = group.AddComponent<VeilReactiveObject>();
+                reactive.ActiveState = structure.State;
+                reactiveObjects.Add(reactive);
+            }
 
             // --- actors ---
             var lightObject = new GameObject("Sun");
@@ -547,27 +603,26 @@ namespace Veilbreak.Sim
             var veil = Current.Root.AddComponent<VeilStateManager>();
             var safety = Current.Root.AddComponent<ShiftSafetyValidator>();
 
-            var playerRoot = new GameObject("Protagonist");
+            var playerRoot = new GameObject(ArenaLayout.PlayerSpawn.Name);
             playerRoot.transform.SetParent(root, false);
-            // Bootstrap spawns the player at y = 0.15 over a floor whose top face is y = 0.
-            playerRoot.transform.localPosition = new Vector3(0f, .0f, -9f);
+            playerRoot.transform.localPosition = ArenaLayout.PlayerSpawn.Center;
             var controller = playerRoot.AddComponent<CharacterController>();
-            controller.height = 1.8f;
-            controller.center = Vector3.up * .9f;
-            controller.radius = .32f;
-            controller.stepOffset = .45f;
+            controller.height = ArenaLayout.PlayerColliderHeight;
+            controller.center = Vector3.up * (ArenaLayout.PlayerColliderHeight * .5f);
+            controller.radius = ArenaLayout.PlayerColliderRadius;
+            controller.stepOffset = ArenaLayout.ActorStepOffset;
             controller.skinWidth = .035f;
             playerRoot.AddComponent<HealthComponent>().Configure(100f);
             var player = playerRoot.AddComponent<PlayerController>();
 
-            var bossRoot = new GameObject("Guardian");
+            var bossRoot = new GameObject(ArenaLayout.GuardianSpawn.Name);
             bossRoot.transform.SetParent(root, false);
-            bossRoot.transform.localPosition = new Vector3(0f, .1f, 5f);
-            bossRoot.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            bossRoot.transform.localPosition = ArenaLayout.GuardianSpawn.Center;
+            bossRoot.transform.localRotation = Quaternion.Euler(0f, ArenaLayout.GuardianYaw, 0f);
             var bossBody = bossRoot.AddComponent<CharacterController>();
-            bossBody.height = 4.7f;
-            bossBody.center = Vector3.up * 2.35f;
-            bossBody.radius = 1.15f;
+            bossBody.height = ArenaLayout.GuardianColliderHeight;
+            bossBody.center = Vector3.up * (ArenaLayout.GuardianColliderHeight * .5f);
+            bossBody.radius = ArenaLayout.GuardianColliderRadius;
             bossBody.stepOffset = .45f;
             bossRoot.AddComponent<HealthComponent>().Configure(540f);
             var boss = bossRoot.AddComponent<GuardianAI>();
@@ -635,20 +690,15 @@ namespace Veilbreak.Sim
             return Current;
         }
 
-        static void AddReactive(GameObject go, VeilState state, List<VeilReactiveObject> list)
-        {
-            var reactive = go.AddComponent<VeilReactiveObject>();
-            reactive.ActiveState = state;
-            list.Add(reactive);
-        }
-
-        static void Floor(Transform parent, string name, Vector3 position, Vector3 size)
+        /// <summary>Creates one layer-8 box collider from an ArenaLayout shape.</summary>
+        static GameObject SolidBox(Transform parent, string name, Vector3 position, Vector3 size)
         {
             var go = new GameObject(name);
-            go.layer = 8;
+            go.layer = ArenaLayout.SolidLayer;
             go.transform.SetParent(parent, false);
             go.transform.localPosition = position;
             Box(go, size);
+            return go;
         }
 
         static void Box(GameObject go, Vector3 size)

@@ -34,16 +34,21 @@ namespace Veilbreak
             var game = gameObject.AddComponent<ArenaGameManager>();
             var veil = gameObject.AddComponent<VeilStateManager>();
             var safety = gameObject.AddComponent<ShiftSafetyValidator>();
-            var playerRoot = art.Group("Protagonist (placeholder)", transform, new Vector3(0, .15f, -9));
-            var controller = playerRoot.gameObject.AddComponent<CharacterController>(); controller.height = 1.8f; controller.center = Vector3.up * .9f;
-            controller.radius = .32f; controller.stepOffset = .45f; controller.skinWidth = .035f;
+            // Spawn point and guardian footprint come from ArenaLayout so the simulation places actors identically.
+            var playerRoot = art.Group(ArenaLayout.PlayerSpawn.Name, transform, ArenaLayout.PlayerSpawn.Center);
+            var controller = playerRoot.gameObject.AddComponent<CharacterController>();
+            controller.height = ArenaLayout.PlayerColliderHeight;
+            controller.center = Vector3.up * (ArenaLayout.PlayerColliderHeight * .5f);
+            controller.radius = ArenaLayout.PlayerColliderRadius;
+            controller.stepOffset = ArenaLayout.ActorStepOffset; controller.skinWidth = .035f;
             playerRoot.gameObject.AddComponent<HealthComponent>().Configure(100);
             var player = playerRoot.gameObject.AddComponent<PlayerController>();
             var visual = sceneArt.Warrior(playerRoot, out Transform blade);
-            var bossRoot = art.Group("Veil Guardian (placeholder)", transform, new Vector3(0, .1f, 5));
-            bossRoot.localRotation = Quaternion.Euler(0,180,0);
-            var bossBody = bossRoot.gameObject.AddComponent<CharacterController>(); bossBody.height = 4.7f; bossBody.center = Vector3.up * 2.35f;
-            bossBody.radius = 1.15f; bossBody.stepOffset = .45f;
+            var bossRoot = art.Group(ArenaLayout.GuardianSpawn.Name, transform, ArenaLayout.GuardianSpawn.Center);
+            bossRoot.localRotation = Quaternion.Euler(0, ArenaLayout.GuardianYaw, 0);
+            var bossBody = bossRoot.gameObject.AddComponent<CharacterController>();
+            bossBody.height = ArenaLayout.GuardianColliderHeight; bossBody.center = Vector3.up * (ArenaLayout.GuardianColliderHeight * .5f);
+            bossBody.radius = ArenaLayout.GuardianColliderRadius; bossBody.stepOffset = ArenaLayout.ActorStepOffset;
             bossRoot.gameObject.AddComponent<HealthComponent>().Configure(540);
             var boss = bossRoot.gameObject.AddComponent<GuardianAI>();
             var bossVisual = sceneArt.Guardian(bossRoot, out Transform core, out Transform armor);

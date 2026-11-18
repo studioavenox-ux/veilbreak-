@@ -546,7 +546,13 @@ namespace UnityEngine
         public GameObject gameObject
         {
             get => gameObjectField;
-            set { gameObjectField = value; if (value != null) name = value.name; }
+            set { gameObjectField = value; }
+        }
+        // Unity's Component.name is the GameObject's name, always, both ways.
+        public new string name
+        {
+            get => gameObjectField != null ? gameObjectField.name : base.name;
+            set { if (gameObjectField != null) gameObjectField.name = value; else base.name = value; }
         }
         public Transform transform => gameObjectField?.transform;
         public T GetComponent<T>() where T : class => gameObjectField?.GetComponent<T>();
@@ -718,9 +724,13 @@ namespace UnityEngine
         /// <summary>Refreshes the collider snapshot the queries run against.</summary>
         public static void Recollect() => SceneProvider?.Invoke(Scratch);
 
-        internal static bool Matches(Collider collider, int mask, QueryTriggerInteraction trigger)
+        internal static bool Matches(Collider collider, int mask, QueryTriggerInteraction trigger, bool requireEnabled = true)
         {
-            if (collider == null || !collider.Active) return false;
+            if (collider == null) return false;
+            // A collider on an inactive GameObject never participates; a disabled collider still blocks
+            // physics queries unless the caller opts into enabled-only matching.
+            if (!collider.gameObject.activeInHierarchy) return false;
+            if (requireEnabled && !collider.Active) return false;
             if ((mask & (1 << collider.gameObject.layer)) == 0) return false;
             if (collider.isTrigger && trigger == QueryTriggerInteraction.Ignore) return false;
             return true;
@@ -816,28 +826,27 @@ namespace UnityEngine
         static bool RayBox(Vector3 origin, Vector3 direction, BoxCollider box, float maxDistance, out float hitDistance)
         {
             hitDistance = 0f;
-            BoxWorld(box, out Vector3 center, out Vector3 extents, out Quaternion rotation);
-            // Scale into the box's local space: a ray parameterised in world units stays valid
-            // because the local origin/direction are both divided by the same scale.
+            BoxWorld(box, out Vector3 center, out _, out Quaternion rotation);
+            // Unity's localToWorld is T * R * S, so its inverse is S^-1 * R^-1 * T^-1: rotate into the
+            // box frame FIRST, then divide by the world scale. The extents stay unscaled (box.size),
+            // which keeps the ray parameter in world units - scaling both would double-count the scale.
             Vector3 scale = box.transform.lossyScale;
             Vector3 safeScale = new Vector3(
                 Math.Abs(scale.x) > 1e-6f ? Math.Abs(scale.x) : 1f,
                 Math.Abs(scale.y) > 1e-6f ? Math.Abs(scale.y) : 1f,
                 Math.Abs(scale.z) > 1e-6f ? Math.Abs(scale.z) : 1f);
-            // Divide by the world scale first, then rotate into the box's local frame.
-            Vector3 localOrigin = rotation.Inverse() * new Vector3(
-                (origin.x - center.x) / safeScale.x,
-                (origin.y - center.y) / safeScale.y,
-                (origin.z - center.z) / safeScale.z);
-            Vector3 localDirection = rotation.Inverse() * new Vector3(
-                direction.x / safeScale.x, direction.y / safeScale.y, direction.z / safeScale.z);
+            Vector3 localOrigin = rotation.Inverse() * (origin - center);
+            localOrigin = new Vector3(localOrigin.x / safeScale.x, localOrigin.y / safeScale.y, localOrigin.z / safeScale.z);
+            Vector3 localDirection = rotation.Inverse() * direction;
+            localDirection = new Vector3(localDirection.x / safeScale.x, localDirection.y / safeScale.y, localDirection.z / safeScale.z);
+            Vector3 extents = box.size * .5f;
             float tMin = 0f, tMax = maxDistance;
             for (int axis = 0; axis < 3; axis++)
             {
                 float o = axis == 0 ? localOrigin.x : axis == 1 ? localOrigin.y : localOrigin.z;
                 float d = axis == 0 ? localDirection.x : axis == 1 ? localDirection.y : localDirection.z;
                 float e = axis == 0 ? extents.x : axis == 1 ? extents.y : extents.z;
-                if (Math.Abs(d) < 1e-7f) { if (o < -e || o > e) return false; continue; }
+                if (Math.Abs(d) < 1e-9f) { if (o < -e || o > e) return false; continue; }
                 float t1 = (-e - o) / d, t2 = (e - o) / d;
                 if (t1 > t2) { float swap = t1; t1 = t2; t2 = swap; }
                 tMin = Math.Max(tMin, t1);
@@ -867,12 +876,20 @@ namespace UnityEngine
         public static RaycastHit[] RaycastAll(Vector3 origin, Vector3 direction, float maxDistance, int layerMask, QueryTriggerInteraction queryTriggerInteraction)
         {
             Sync();
+            // Physics queries see disabled colliders; only disabled GameObjects are skipped. The shift
+            // validator relies on this: incoming geometry is deactivated by GameObject, not by collider.
+            return CastAll(origin, direction, maxDistance, layerMask, queryTriggerInteraction, requireEnabled: false);
+        }
+
+        static RaycastHit[] CastAll(Vector3 origin, Vector3 direction, float maxDistance, int layerMask,
+            QueryTriggerInteraction queryTriggerInteraction, bool requireEnabled)
+        {
             var hits = new List<RaycastHit>();
             Vector3 unit = direction.normalized;
             for (int i = 0; i < Scratch.Count; i++)
             {
                 Collider collider = Scratch[i];
-                if (!Matches(collider, layerMask, queryTriggerInteraction)) continue;
+                if (!Matches(collider, layerMask, queryTriggerInteraction, requireEnabled)) continue;
                 float distance;
                 if (collider is BoxCollider box)
                 {
@@ -1353,7 +1370,9 @@ namespace UnityEngine
         public Vector2 offsetMax { get; set; }
         public Vector2 anchoredPosition { get; set; }
         public Vector2 sizeDelta { get; set; }
-        public Rect rect => new Rect(0, 0, 100, 100);
+        // Unity drives rect from sizeDelta (anchors at one point). A fixed 100x100 here would hide
+        // real divide-by-zero guards in the joystick, so it must follow the sized being tested.
+        public Rect rect => new Rect(0, 0, sizeDelta.x, sizeDelta.y);
     }
 
     public struct Rect

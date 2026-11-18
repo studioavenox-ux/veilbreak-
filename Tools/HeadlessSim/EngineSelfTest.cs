@@ -95,9 +95,29 @@ namespace Veilbreak.Sim
             var rotatedBox = rotated.AddComponent<BoxCollider>();
             rotatedBox.size = new Vector3(.4f, 2f, 10f);
             Physics.Recollect();
-            var rotatedHit = Physics.RaycastAll(new Vector3(0, 1, 0), Vector3.forward, 10f, 1 << 8, QueryTriggerInteraction.Ignore);
-            float nearest = rotatedHit.Length > 0 ? rotatedHit[0].distance : -1f;
+            float nearest = -1f;
+            foreach (var rotatedHit in Physics.RaycastAll(new Vector3(0, 1, 0), Vector3.forward, 10f, 1 << 8, QueryTriggerInteraction.Ignore))
+                if (rotatedHit.collider == rotatedBox) nearest = rotatedHit.distance;
             Near("rotated scaled wall hit distance", 5.4f, nearest, .05f);
+
+            // --- physics: a non-uniformly scaled box is hit at its true world face ---
+            // size 4 in Y with a world scale of 2 means the box spans y in [-4, 4]; a downward ray
+            // from y = 10 must stop at y = 4, i.e. distance 6. Applying the scale twice (scaled
+            // extents AND a scaled ray) would report 2, so this pins the transform order.
+            var tall = new GameObject("scaled slab");
+            tall.layer = 8;
+            tall.transform.SetParent(root.transform, false);
+            tall.transform.localPosition = Vector3.zero;
+            tall.transform.localScale = new Vector3(1, 2, 1);
+            var tallBox = tall.AddComponent<BoxCollider>();
+            tallBox.size = new Vector3(2, 4, 2);
+            Physics.Recollect();
+            // RaycastAll is unordered, so find this shape by identity rather than by index.
+            float slabDistance = -1f;
+            foreach (var slabHit in Physics.RaycastAll(new Vector3(0, 10, 0), Vector3.down, 20f, 1 << 8, QueryTriggerInteraction.Ignore))
+                if (slabHit.collider == tallBox) slabDistance = slabHit.distance;
+            Near("scaled box top face is hit at its world height", 6f, slabDistance, .01f);
+            tall.SetActive(false);
 
             // --- physics: walls stop horizontal motion ---
             var wall = new GameObject("wall");

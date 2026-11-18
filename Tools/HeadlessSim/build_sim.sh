@@ -37,7 +37,11 @@ export LD_LIBRARY_PATH=$TOOL OC_LANGVER=10.0
 export OC_REFDIR=$TOOL/bcl OC_SKIP="Microsoft.CodeAnalysis.dll,Microsoft.CodeAnalysis.CSharp.dll,Microsoft.CodeAnalysis.VisualBasic.dll,Microsoft.CodeAnalysis.Workspaces.dll,Microsoft.CodeAnalysis.CSharp.Workspaces.dll,Microsoft.CodeAnalysis.VisualBasic.Workspaces.dll,Microsoft.CodeAnalysis.Features.dll,Microsoft.CodeAnalysis.FlowAnalysis.Utilities.dll,humanizer.dll,Newtonsoft.Json.dll,SQLitePCLRaw.core.dll,SQLitePCLRaw.batteries_v2.dll,SQLitePCLRaw.provider.e_sqlite3.dll,Roslyn Library.dll,SymmetricKeyAlgorithmProvider.dll"
 export OC_OUT=$OUT OC_QUIET=1 OC_CORELIB=$TOOL/bcl/System.Private.CoreLib.dll OC_KIND=exe OC_PDB=1
 
-OC_EXTRA_SOURCES="$SIM/MiniEngine.cs,$SIM/EngineSelfTest.cs,$GAMEPLAY,$SIM/SimMain.cs" \
+# The Editor test sources are added so their [Test] methods can be executed by EditModeRunner.
+EDITMODE=""
+for file in "$ROOT"/Assets/VEILBREAK/Tests/Editor/*.cs; do EDITMODE="$EDITMODE,$file"; done
+
+OC_EXTRA_SOURCES="$SIM/MiniEngine.cs,$SIM/EngineSelfTest.cs,$SIM/EditModeRunner.cs,$SIM/NUnitShim.cs,$GAMEPLAY,$EDITMODE,$SIM/SimMain.cs" \
 "$HARNESS" --sources - veilsim "DEBUG;UNITY_2017_1_OR_NEWER;UNITY_6000_0_OR_NEWER;ENABLE_PHYSICS;ENABLE_LEGACY_INPUT_MANAGER" "" 2>&1 | tail -20; BUILD_RC=${PIPESTATUS[0]}
 [ "${BUILD_RC:-1}" -ne 0 ] && {
   echo "SIMULATION BUILD FAILED - see $OUT/veilsim.errors.txt"; exit 1; }

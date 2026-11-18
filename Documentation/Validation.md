@@ -60,3 +60,79 @@ Harness bugs found and fixed along the way (each one had been silently invalidat
 The harness caught one genuine scene-layout defect while being written: this repository's earlier diagnosis had the Broken Veil cover at `x=0` instead of its real `x=7` position in `PrototypeSceneArt.Courtyard`. The scene art remains the source of truth; the harness copies it.
 
 Not verified by this harness: Unity compilation/import of the scripts, scene generation, EditMode/PlayMode Test Runner results, APK build/install, rendering, real touch input, PhysX character-controller fidelity, performance. Those gates in the sections above remain outstanding.
+
+## Shared arena layout — 2026-11-17
+
+Branch `arena/67e6bcaa-veilbreak`. Removed the duplicated arena geometry that had let the
+simulation and the real scene drift apart (a live example: the Broken Veil cover was at `x=0` in
+the harness and `x=7` in `PrototypeSceneArt`).
+
+**One definition.** `Assets/VEILBREAK/Scripts/Core/ArenaLayout.cs` now holds every shape gameplay
+can collide with: floor, four boundary stones, eight piers (column + plinth), four arch piers,
+the reliquary pedestal, and the four reality-reactive groups (Living/Broken route cover and
+Living/Broken terrace) with their `VeilState`. `PrototypeSceneArt` builds its colliders from it,
+`VeilbreakBootstrap` takes its spawn points and guardian collider dimensions from it, and
+`Tools/HeadlessSim` builds its courtyard from the same data. Decorative-only geometry (flagstones,
+coping blocks, masonry drums, capitals, foliage, crystals, actor art) stays hand-authored in
+`PrototypeSceneArt`, deliberately not unified. `ArenaBox` positions are arena space everywhere,
+including pier boxes, so an `ArenaBox` always means the same thing.
+
+**Checks proving both consumers use it.**
+
+| Layer | Check |
+| --- | --- |
+| Sim data | `EverySolidShapeIsWellFormedAndOnTheSolidLayer` — 34 shapes, all positive extents, layer 8 |
+| Sim scene | sim case `Simulated courtyard is built from the shared ArenaLayout definition` — matches every layout shape by name/size/world position, rejects unexplained colliders, verifies reactive group names, order, state and child counts, verifies actor spawn/collider values, and asserts the Living cover actually blocks a capsule |
+| Unity scene | PlayMode `BootstrapProducesExactlyTheLayoutGeometry` — same contract against a real bootstrapped arena |
+| EditMode data | `ArenaLayoutTests` (5 tests): realities covered, spawn heights above the floor, cover/terrace placement, rotation semantics |
+
+Adding or removing a solid shape is a gameplay change and is meant to fail
+`EverySolidShapeIsWellFormedAndOnTheSolidLayer`'s explicit count until updated.
+
+**Executed results.**
+
+- `bash Tools/HeadlessSim/build_sim.sh` → `engine self-test: OK`, `RESULT SIMULATION PASSED - 138 checks passed, 0 failed` (the previous 84, unchanged, plus 54 layout-contract checks), `EDITMODE RESULT executed=17 failed=0 skipped=2`.
+- `bash Tools/OfflineCompile/check_offline.sh all` → `OFFLINE TYPECHECK PASSED (mode: all)`; Runtime 21 sources, Editor 2, Tests 7, all 0 errors.
+- `Tools/validate_source.py` → `PASS: 30 C# files checked; JSON/XML valid; 52 unique Unity asset GUIDs.` with C# syntax parsed.
+- `python -m unittest discover -s Tools` → 4 validator regressions OK.
+
+**The harness now executes real EditMode tests.** `Tools/HeadlessSim/EditModeRunner.cs` reflects
+over the project's actual `Assets/VEILBREAK/Tests/Editor` sources and runs the `[Test]` methods
+whose signatures only need plain data, against an asserting NUnit shim
+(`Tools/HeadlessSim/NUnitShim.cs` — the typecheck stubs have empty bodies and would pass
+silently). 17 execute, 2 are skipped (they need a `UnityTearDown` frame and are covered by the
+PlayMode suite instead). This is not the Unity Test Runner; it is an additional honest signal.
+
+Mock-fidelity bugs this work exposed and fixed (each had been silently hiding behaviour):
+
+1. `Component.name` was a separate field, so components reported their own name instead of their
+   GameObject's. Unity proxies it; the harness now does too.
+2. `RectTransform.rect` was hard-coded to 100×100, which masked the joystick's zero-size
+   divide-by-zero guard. It now follows `sizeDelta` like Unity.
+3. Physics queries treated a *disabled collider* as absent. Unity's queries only skip colliders on
+   *inactive GameObjects*, which is exactly what the shift validator depends on for incoming
+   geometry.
+4. `RayBox` applied world scale twice (scaled extents *and* a scale-divided ray), so any solid box
+   with a non-unit scale was hit at the wrong distance. Now pinned by an engine self-test that
+   asserts a Y-scaled slab's true world face.
+
+All four were found by running the real tests, not by inspection. The engine self-test is now
+23 invariants.
+
+## Unity validation — BLOCKED in this environment
+
+The pinned Editor `D:\UnityEditors\6000.3.26f1\Editor\Unity.exe` does not exist here: the sandbox
+is Linux (`Linux e2b.local 6.1.158+ x86_64`) with no `/mnt/d`, no Unity binary, no Android
+SDK/NDK and no device. Therefore **Unity import/compile, scene generation, EditMode and PlayMode
+Test Runner runs, the encounter playthrough in Play Mode, and the Android APK build have not been
+executed here and are not claimed.** No logs, test counts or `BuildReport` output are fabricated.
+
+`Tools/UnityValidation/Run-UnityGates.ps1` runs all six gates on the Windows machine and writes
+real artefacts to `Documentation/UnityValidation/<timestamp>/` (`summary.tsv`, logs, NUnit XML,
+both generated scenes, the APK). The script itself has not been executed either — there is no
+PowerShell here — so treat it as an unrun harness until a run directory exists:
+
+```powershell
+cd <repo>
+powershell -ExecutionPolicy Bypass -File Tools\UnityValidation\Run-UnityGates.ps1
+```
