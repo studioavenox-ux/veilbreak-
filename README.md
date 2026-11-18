@@ -59,6 +59,12 @@ See [arena layout](Documentation/VeilArena.md), [shift rules](Documentation/Real
 
 URP defaults are modest: HDR off, 2× MSAA, one directional light, no additional-light shadows, 1024 main shadow map, 30 m shadow distance. No post-processing, particles, remote services, or per-attack spawning. The runtime uses 60 FPS as its cap; 30 FPS low-end / 60 FPS capable-device performance are **targets, not measured results**. Set the bootstrap target or lower render scale for device-specific trials.
 
+## Headless gameplay simulation
+
+`Tools/HeadlessSim/` runs the real runtime scripts outside Unity against a mock engine, to check combat, the Veil shift, guardian AI and the encounter state machine without an Editor. Build with `bash Tools/HeadlessSim/build_sim.sh`, then run `Tools/.toolchain/out/sim/app/veilsim`; it prints `engine self-test: OK` and `RESULT SIMULATION PASSED - N checks passed, 0 failed`. It needs the offline toolchain from `Tools/OfflineCompile/setup_toolchain.py` (git-ignored, ~290 MB).
+
+This is **simulation-verified, not Unity-verified**: the mock is not the Unity engine, so compilation/import, Play Mode, the Unity Test Runner, PhysX character-controller fidelity, rendering and device performance remain unverified. See [Validation.md](Documentation/Validation.md).
+
 ## Implemented source vs. future work
 **Implemented in source:** bootstrap and Editor scene generator; placeholder arena/actors; CharacterController movement and dodge; separate orbit/follow/collision camera; timed directional melee; health; shared-coordinate reality manager and reactive collision; unsafe-shift rejection; guardian finite-state machine and two telegraphed attacks; native touch HUD, health and cooldown display; title, pause, victory, defeat, and restart; Edit/Play Mode test suites.
 
