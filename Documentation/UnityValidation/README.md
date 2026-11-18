@@ -7,6 +7,20 @@ subdirectory per run (`<yyyyMMdd-HHmmss>/`), produced by:
 powershell -ExecutionPolicy Bypass -File Tools\UnityValidation\Run-UnityGates.ps1
 ```
 
+## Verify the runner before trusting it
+
+```bash
+bash Tools/UnityValidation/verify.sh
+```
+
+Checks the tooling itself, with no Editor: (1) every acceptance script parses, (2) PowerShell's own
+parser agrees where the host can load it (it cannot here - the only reachable distribution is
+ReadyToRun for Windows, so that step reports SKIPPED, never PASS), and (3) the reporting rules are
+executed. It fails if a broken script or a rule regression would let a failed run report success.
+
+What it proves: valid syntax and honest reporting. It does not prove the gates pass - only a real
+Windows run does that.
+
 ## Current status: BLOCKED — no evidence yet
 
 No subdirectory exists, because the gates have never run. The development sandbox used for

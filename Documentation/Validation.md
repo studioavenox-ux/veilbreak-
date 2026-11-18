@@ -136,3 +136,48 @@ PowerShell here — so treat it as an unrun harness until a run directory exists
 cd <repo>
 powershell -ExecutionPolicy Bypass -File Tools\UnityValidation\Run-UnityGates.ps1
 ```
+
+## Acceptance runner repair — 2026-11-17
+
+The first version of `Tools/UnityValidation/Run-UnityGates.ps1` could have reported success for a
+run that failed. It ignored `Start-Process`'s exit code, trusted a possibly-absent or unparsable
+NUnit file, read test counts from the summary attributes instead of the `test-case` nodes, treated a
+missing encounter case as an absence rather than a failure, and labelled automated PlayMode coverage
+as a playthrough. It was also never parsed by anything, so a syntax error would only surface on the
+Windows machine.
+
+**What changed.**
+
+| Requirement | Implementation |
+| --- | --- |
+| Unity exit code checked for both platforms | `Invoke-TestPlatform` passes `$run.ExitCode` into `Test-NUnitGate`; every non-zero exit fails the gate |
+| NUnit XML validated | `Read-NUnitResults` requires the file, non-empty content, valid XML, a `/test-run` root, and at least one `test-case` |
+| Zero failures **and** ≥ 1 passed | `Test-NUnitGate` fails on any failed case or when `Passed -lt 1`; an unknown result value counts as failed |
+| Counts are trustworthy | Verdicts count `test-case` nodes and flag a summary attribute that disagrees with them |
+| All five encounter cases required | `Test-RequiredCases` fails on absent, skipped, inconclusive or failed cases, naming each |
+| No manual-playthrough claim | `Format-GateReport` always prints `COVERAGE: automated PlayMode coverage is NOT a manual playthrough` and a separate `MANUAL: ... NOT executed` line |
+| Skipped/inconclusive visible | Kept in the detail string, listed by name under `not run:`, and counted separately; a run of only skips fails |
+| Syntax checked by a real parser | `Tools/UnityValidation/check_powershell_syntax.py` + `check_powershell.sh` |
+| Paths with spaces | Every file operation uses `-LiteralPath`; paths handed to Unity are quote-escaped; the project path is normalised once via `Resolve-Path` |
+| Stale evidence | The previous result XML and APK are deleted before each attempt |
+
+**Executed here** (`bash Tools/UnityValidation/verify.sh`, exit 0):
+
+- `PASSED   Run-UnityGates.ps1`, `PASSED UnityGates.psm1`, `PASSED UnityAcceptance.Tests.ps1` — parsed by `tree-sitter-powershell` (Microsoft's PowerShell grammar).
+- Three planted-bad fixtures (unclosed brace, unclosed string, malformed `param` block) are correctly rejected.
+- `python -m unittest Tools.test_powershell_syntax Tools.test_acceptance_reporting` → **39 tests OK**; the repository-wide `python -m unittest discover -s Tools` → **43 tests OK**.
+- `bash Tools/UnityValidation/check_powershell.sh` → `SKIPPED`: the staged `System.Management.Automation.dll` is ReadyToRun-compiled for Windows (`COR20` flags without `ILONLY`) and cannot load on this Linux host. It is reported as SKIPPED with exit 2, never as a pass.
+
+**Unresolved, and deliberately not glossed over:**
+
+1. The scripts have never been *executed*. There is no PowerShell here, and every PowerShell
+   binary distribution is reachable only through GitHub release assets, whose CDN host is blocked.
+2. The `tree-sitter-powershell` grammar used here is real but incomplete: it reports false syntax
+   errors on some single-line constructs (`switch` arms and `param` blocks written on one line).
+   The scripts are written in the multi-line form it parses correctly, and this was verified
+   construct by construct. PowerShell's own parser is the authority and runs on Windows.
+3. `Tests/UnityAcceptance.Tests.ps1` (Pester, 20 cases) exists but has not run for the same reason.
+   Its rules are mirrored in `Tools/test_acceptance_reporting.py` (22 checks, passing) as an
+   independent cross-check against the same XML shapes.
+
+Neither the acceptance gates nor the game were verified by this work.
