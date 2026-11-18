@@ -155,6 +155,47 @@ class AcceptanceRunnerContractTests(unittest.TestCase):
     def test_exit_code_is_derived_from_the_rows(self):
         self.assertIn('exit (Get-ExitCode -Rows $rows)', self.runner)
 
+    def test_pester_suite_covers_the_summary_consistency_rules(self):
+        """The Pester file is the Windows-side authority; it must test what the audit found."""
+        pester = (ROOT / 'Tools' / 'UnityValidation' / 'Tests' / 'UnityAcceptance.Tests.ps1').read_text()
+        for case in ('An inflated passed summary fails the gate',
+                     'A deflated passed summary fails the gate',
+                     'A consistent summary is accepted',
+                     'An inconsistent skipped summary fails the gate',
+                     'An inconsistent inconclusive summary fails the gate',
+                     'Absent optional summary attributes make no claim',
+                     'An inconsistent warnings summary fails the gate',
+                     'A non-numeric summary attribute makes no claim',
+                     'An inconsistent testcasecount fails the gate',
+                     'A warning is counted separately and named, not dropped',
+                     'A run of only warnings does not satisfy the pass requirement',
+                     'Duplicate identical case nodes are detected',
+                     'A required case with conflicting results fails',
+                     'A required case matching two distinct cases is ambiguous',
+                     'A duplicated required case with the same result still passes the requirement'):
+            self.assertIn(case, pester, f'Pester suite is missing: {case}')
+
+    def test_pester_and_python_cover_the_same_rules(self):
+        """Guard against the two suites drifting apart."""
+        pester = (ROOT / 'Tools' / 'UnityValidation' / 'Tests' / 'UnityAcceptance.Tests.ps1').read_text()
+        python = (ROOT / 'Tools' / 'test_acceptance_reporting.py').read_text()
+        # Topic -> token each suite must contain for that topic. The Python mirror talks about
+        # summary attributes ("Summary passed ... disagrees"), the Pester tests about test names.
+        shared_topics = {
+            'passed summary': 'passed',
+            'skipped summary': 'skipped',
+            'inconclusive summary': 'inconclusive',
+            'warnings summary': 'warnings',
+            'testcasecount': 'testcasecount',
+            'Warning results': 'warning',
+            'ambiguous matches': 'ambig',
+            'conflicting matches': 'conflict',
+            'duplicate nodes': 'duplicate',
+        }
+        for topic, token in shared_topics.items():
+            self.assertIn(token.lower(), pester.lower(), f'Pester lost topic: {topic}')
+            self.assertIn(token.lower(), python.lower(), f'Python mirror lost topic: {topic}')
+
 
 if __name__ == '__main__':
     unittest.main()

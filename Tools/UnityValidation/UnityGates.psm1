@@ -17,36 +17,91 @@
         manual playthrough.
 #>
 
-function Get-ChildElements {
+# --- XML helpers -----------------------------------------------------------------------
+# Attribute access goes through these on purpose: reading $node.GetAttribute('x') before checking
+# $node.HasAttribute('x') returns $null, and [int]$null throws under Set-StrictMode. The Attributes
+# collection returns $null for a missing attribute, which is the behaviour wanted here.
+
+function Get-XmlAttribute {
     param($Node, [string]$Name)
-    # SelectNodes with an XPath predicate keeps this working for both element and attribute lookups.
-    if ($null -eq $Node) { return @() }
-    return @($Node.SelectNodes(".//$Name"))
+    if ($null -eq $Node) { return $null }
+    $attributes = $Node.Attributes
+    if ($null -eq $attributes) { return $null }
+    $attribute = $attributes[$Name]
+    if ($null -eq $attribute) { return $null }
+    return $attribute.Value
+}
+
+function ConvertTo-SummaryCount {
+    <# Returns the attribute as an int, or $null when absent, blank or not a number. #>
+    param($Value)
+    if ($null -eq $Value -or "$Value".Trim() -eq '') { return $null }
+    $parsed = 0
+    if ([int]::TryParse("$Value".Trim(), [ref]$parsed)) { return $parsed }
+    return $null
+}
+
+function Compare-SummaryCount {
+    <#
+    Compares one summary attribute against the count taken from the test-case nodes.
+    "Where available" is deliberate: NUnit omits attributes it does not use (some versions write
+    neither warnings nor inconclusive), and a missing attribute is not an inconsistency - it makes no
+    claim. Only a present, numeric, different value is reported.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        $SummaryValue,
+        [Parameter(Mandatory)][int]$Actual,
+        [Parameter(Mandatory)]$Problems
+    )
+    $summary = ConvertTo-SummaryCount -Value $SummaryValue
+    if ($null -eq $summary) { return }
+    if ($summary -ne $Actual) {
+        $Problems.Add("Summary $Label ($summary) disagrees with the $Actual $Label test-case node(s).")
+    }
 }
 
 function Read-NUnitResults {
     <#
-    Parses an NUnit 3 result file (the format Unity's Test Runner writes).
-    Returns an object with Counts, Cases and Problems so the caller can decide, not this function.
+    Parses an NUnit 3 result file (Unity's Test Runner format) without trusting its summary.
+
+    Every count is derived from the test-case nodes first; each summary attribute is then compared
+    against the derived count and any disagreement becomes a Problem (which fails the gate).
+    Attributes that are absent or not numeric make no claim and are not reported as inconsistent.
+
+    NUnit result vocabulary and how each is treated:
+      Passed       - satisfies the pass requirement.
+      Failed       - fails the gate; the case is named.
+      Error        - not a normal NUnit result, but treated as Failed (never a pass).
+      Skipped      - listed by name; does NOT satisfy the pass requirement.
+      Inconclusive - listed by name; does NOT satisfy the pass requirement.
+      Warning      - NUnit's "passed with a warning". It is pass-like, so it is counted separately
+                     and listed by name, keeping the warning visible instead of folding it into the
+                     pass count or dropping it.
+      anything else (including an empty result) - counted as Failed, with the raw value shown.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
 
     $problems = New-Object System.Collections.Generic.List[string]
     $result = [pscustomobject]@{
-        Parsed          = $false
-        FileExists      = (Test-Path -LiteralPath $Path)
-        RunName         = $null
-        Total           = 0
-        Passed          = 0
-        Failed          = 0
-        Skipped         = 0
-        Inconclusive    = 0
-        Warnings        = 0
-        Cases           = @()
-        FailedCaseNames = @()
-        SkippedCaseNames = @()
-        Problems        = $problems
+        Parsed             = $false
+        FileExists         = (Test-Path -LiteralPath $Path)
+        RunName            = $null
+        RunResult          = $null
+        TestCaseCount      = $null
+        Total              = 0
+        Passed             = 0
+        Failed             = 0
+        Skipped            = 0
+        Inconclusive       = 0
+        Warnings           = 0
+        Cases              = @()
+        FailedCaseNames    = @()
+        SkippedCaseNames   = @()
+        WarningCaseNames   = @()
+        DuplicateCaseNames = @()
+        Problems           = $problems
     }
 
     if (-not $result.FileExists) {
@@ -74,47 +129,74 @@ function Read-NUnitResults {
     }
 
     $result.Parsed = $true
-    $result.RunName = $run.GetAttribute('testcasecount') + ' cases, result ' + $run.GetAttribute('result')
+    $result.RunResult = Get-XmlAttribute -Node $run -Name 'result'
+    $result.TestCaseCount = ConvertTo-SummaryCount -Value (Get-XmlAttribute -Node $run -Name 'testcasecount')
+    $result.RunName = "$($result.TestCaseCount) cases, result $($result.RunResult)"
 
-    # Counts come from the actual test-case nodes, not from the summary attributes, so a truncated
-    # or hand-edited summary cannot inflate the numbers.
+    # Count from the case nodes, never from the summary attributes.
     $cases = @($xml.SelectNodes('//test-case'))
     $result.Cases = $cases
+    $result.Total = $cases.Count
+
+    $seen = @{}
     foreach ($case in $cases) {
-        $outcome = $case.GetAttribute('result')
+        $name = "$(Get-XmlAttribute -Node $case -Name 'name')"
+        $outcome = "$(Get-XmlAttribute -Node $case -Name 'result')"
+
+        # A duplicated test-case name means the file cannot be attributed case by case, so it is
+        # surfaced rather than silently collapsed into one result.
+        $key = $name + '|' + $outcome
+        if ($seen.ContainsKey($key)) { $result.DuplicateCaseNames += $name } else { $seen[$key] = $true }
+
         switch ($outcome) {
             'Passed'       { $result.Passed++ }
-            'Failed'       { $result.Failed++; $result.FailedCaseNames += $case.GetAttribute('name') }
-            'Skipped'      { $result.Skipped++; $result.SkippedCaseNames += $case.GetAttribute('name') }
-            'Inconclusive' { $result.Inconclusive++; $result.SkippedCaseNames += $case.GetAttribute('name') }
-            'Warning'      { $result.Warnings++ }
+            'Failed'       { $result.Failed++; $result.FailedCaseNames += $name }
+            'Skipped'      { $result.Skipped++; $result.SkippedCaseNames += $name }
+            'Inconclusive' { $result.Inconclusive++; $result.SkippedCaseNames += $name }
+            'Warning'      { $result.Warnings++; $result.WarningCaseNames += $name }
             default {
-                # Anything else (e.g. 'Error') is a failure to be investigated, never a pass.
+                $label = if ([string]::IsNullOrWhiteSpace($outcome)) { 'no result attribute' } else { $outcome }
                 $result.Failed++
-                $result.FailedCaseNames += "$($case.GetAttribute('name')) [$outcome]"
+                $result.FailedCaseNames += "$name [$label]"
             }
         }
     }
-    $result.Total = $cases.Count
+
+    if ($result.DuplicateCaseNames.Count -gt 0) {
+        $unique = (@($result.DuplicateCaseNames) | Select-Object -Unique) -join ', '
+        $problems.Add("Duplicate test-case name(s) in the result file: $unique")
+    }
 
     foreach ($required in @('total', 'passed', 'failed')) {
-        if (-not $run.HasAttribute($required)) { $problems.Add("test-run is missing the '$required' attribute.") }
+        if ($null -eq (Get-XmlAttribute -Node $run -Name $required)) {
+            $problems.Add("test-run is missing the '$required' attribute.")
+        }
     }
     if ($result.Total -eq 0) { $problems.Add("The run contains no test cases.") }
-    if ($result.Total -ne [int]$run.GetAttribute('total') -and $run.HasAttribute('total')) {
-        $problems.Add("Summary total ($($run.GetAttribute('total'))) disagrees with the $($result.Total) test-case nodes.")
+
+    Compare-SummaryCount -Label 'total'        -SummaryValue (Get-XmlAttribute -Node $run -Name 'total')        -Actual $result.Total        -Problems $problems
+    Compare-SummaryCount -Label 'passed'       -SummaryValue (Get-XmlAttribute -Node $run -Name 'passed')       -Actual $result.Passed       -Problems $problems
+    Compare-SummaryCount -Label 'failed'       -SummaryValue (Get-XmlAttribute -Node $run -Name 'failed')       -Actual $result.Failed       -Problems $problems
+    Compare-SummaryCount -Label 'skipped'      -SummaryValue (Get-XmlAttribute -Node $run -Name 'skipped')      -Actual $result.Skipped      -Problems $problems
+    Compare-SummaryCount -Label 'inconclusive' -SummaryValue (Get-XmlAttribute -Node $run -Name 'inconclusive') -Actual $result.Inconclusive -Problems $problems
+    Compare-SummaryCount -Label 'warnings'     -SummaryValue (Get-XmlAttribute -Node $run -Name 'warnings')     -Actual $result.Warnings     -Problems $problems
+
+    # testcasecount is NUnit's own tally of cases; it must agree when present.
+    if ($null -ne $result.TestCaseCount -and $result.TestCaseCount -ne $result.Total) {
+        $problems.Add("Summary testcasecount ($($result.TestCaseCount)) disagrees with the $($result.Total) test-case nodes.")
     }
-    if ($result.Failed -ne [int]$run.GetAttribute('failed') -and $run.HasAttribute('failed')) {
-        $problems.Add("Summary failed ($($run.GetAttribute('failed'))) disagrees with the $($result.Failed) failed test-case nodes.")
-    }
+
     return $result
 }
 
 function Test-NUnitGate {
     <#
     Turns parsed results into a gate verdict. A platform gate passes only when the results parsed,
-    there are no failed cases, and at least one case actually passed. Skipped/inconclusive cases do
-    not satisfy "at least one passed", and they remain listed in the detail.
+    there are no failed cases, and at least one case actually passed.
+
+    Skipped/inconclusive cases do not satisfy "at least one passed" and stay listed in the detail.
+    Warning cases are pass-like, so they are reported by name rather than being silently counted as
+    a clean pass or hidden.
     #>
     [CmdletBinding()]
     param(
@@ -127,8 +209,12 @@ function Test-NUnitGate {
     if ($ExitCode -ne 0) { $reasons.Add("Unity exited with code $ExitCode.") }
     foreach ($problem in $Results.Problems) { $reasons.Add($problem) }
     if ($Results.Parsed) {
-        if ($Results.Failed -gt 0) { $reasons.Add("$($Results.Failed) failed test case(s): $($Results.FailedCaseNames -join '; ')") }
-        if ($Results.Passed -lt 1) { $reasons.Add("No test case passed (0 passed, $($Results.Skipped) skipped, $($Results.Inconclusive) inconclusive).") }
+        if ($Results.Failed -gt 0) {
+            $reasons.Add("$($Results.Failed) failed test case(s): $($Results.FailedCaseNames -join '; ')")
+        }
+        if ($Results.Passed -lt 1) {
+            $reasons.Add("No test case passed (0 passed, $($Results.Skipped) skipped, $($Results.Inconclusive) inconclusive).")
+        }
     }
 
     $state = if ($reasons.Count -eq 0) { 'PASS' } else { 'FAIL' }
@@ -136,19 +222,28 @@ function Test-NUnitGate {
               "skipped $($Results.Skipped), inconclusive $($Results.Inconclusive), warnings $($Results.Warnings); " +
               "Unity exit $ExitCode"
     if ($Results.SkippedCaseNames.Count -gt 0) { $detail += "; not run: $($Results.SkippedCaseNames -join '; ')" }
+    if ($Results.WarningCaseNames.Count -gt 0) { $detail += "; warned: $($Results.WarningCaseNames -join '; ')" }
     if ($reasons.Count -gt 0) { $detail += " | " + ($reasons -join ' ') }
 
     return [pscustomobject]@{
-        State  = $state
-        Detail = $detail
+        State   = $state
+        Detail  = $detail
         Reasons = $reasons
     }
 }
 
 function Test-RequiredCases {
     <#
-    Every required case must be present by name and must have result 'Passed'.
-    Absent, skipped, inconclusive or failed are all failures with distinct wording.
+    Every required case must be present and must have passed at least once.
+
+    Matching and conflict rules, in order:
+      * A required name matches a test case by substring, as NUnit reports fully qualified names.
+      * Ambiguity is a failure: if one required name matches more than one DISTINCT case, the file
+        cannot prove which one ran. Conflicting results (e.g. the same case passed and failed) are
+        reported explicitly instead of a pass winning by ordering.
+      * A duplicate of the same case with the same result is not a conflict - it is still required to
+        be passed, and the duplicate is already surfaced by Read-NUnitResults.
+      * No match, or any match that is not Passed, fails with distinct wording.
     #>
     [CmdletBinding()]
     param(
@@ -158,18 +253,36 @@ function Test-RequiredCases {
 
     $missing = New-Object System.Collections.Generic.List[string]
     $notPassed = New-Object System.Collections.Generic.List[string]
+    $ambiguous = New-Object System.Collections.Generic.List[string]
+    $conflicting = New-Object System.Collections.Generic.List[string]
+
     foreach ($name in $Required) {
-        $matches = @($Results.Cases | Where-Object { $_.GetAttribute('name') -like "*$name*" })
+        $matches = @($Results.Cases | Where-Object {
+            "$(Get-XmlAttribute -Node $_ -Name 'name')" -like "*$name*"
+        })
         if ($matches.Count -eq 0) { $missing.Add($name); continue }
-        $passed = @($matches | Where-Object { $_.GetAttribute('result') -eq 'Passed' })
-        if ($passed.Count -eq 0) {
-            $outcomes = ($matches | ForEach-Object { $_.GetAttribute('result') }) -join ','
-            $notPassed.Add("$name [$outcomes]")
+
+        $distinctNames = @($matches | ForEach-Object { "$(Get-XmlAttribute -Node $_ -Name 'name')" } | Select-Object -Unique)
+        if ($distinctNames.Count -gt 1) {
+            $ambiguous.Add("$name -> $($distinctNames.Count) distinct cases ($($distinctNames -join ' | '))")
+            continue
+        }
+
+        $outcomes = @($matches | ForEach-Object { "$(Get-XmlAttribute -Node $_ -Name 'result')" })
+        $uniqueOutcomes = @($outcomes | Select-Object -Unique)
+        if ($uniqueOutcomes.Count -gt 1) {
+            $conflicting.Add("$name [$($outcomes -join ',')]")
+            continue
+        }
+        if ($uniqueOutcomes[0] -ne 'Passed') {
+            $notPassed.Add("$name [$($outcomes -join ',')]")
         }
     }
 
     $reasons = New-Object System.Collections.Generic.List[string]
     if ($missing.Count -gt 0) { $reasons.Add("Required case(s) absent: $($missing -join ', ')") }
+    if ($ambiguous.Count -gt 0) { $reasons.Add("Required case(s) matched more than one distinct test: $($ambiguous -join '; ')") }
+    if ($conflicting.Count -gt 0) { $reasons.Add("Required case(s) had conflicting results: $($conflicting -join '; ')") }
     if ($notPassed.Count -gt 0) { $reasons.Add("Required case(s) did not pass: $($notPassed -join ', ')") }
 
     $state = if ($reasons.Count -eq 0) { 'PASS' } else { 'FAIL' }
@@ -178,7 +291,16 @@ function Test-RequiredCases {
     } else {
         $reasons -join ' | '
     }
-    return [pscustomobject]@{ State = $state; Detail = $detail; Reasons = $reasons; Missing = $missing; NotPassed = $notPassed }
+
+    return [pscustomobject]@{
+        State       = $state
+        Detail      = $detail
+        Reasons     = $reasons
+        Missing     = $missing
+        NotPassed   = $notPassed
+        Ambiguous   = $ambiguous
+        Conflicting = $conflicting
+    }
 }
 
 function New-GateRow {

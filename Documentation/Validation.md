@@ -176,8 +176,64 @@ Windows machine.
    errors on some single-line constructs (`switch` arms and `param` blocks written on one line).
    The scripts are written in the multi-line form it parses correctly, and this was verified
    construct by construct. PowerShell's own parser is the authority and runs on Windows.
-3. `Tests/UnityAcceptance.Tests.ps1` (Pester, 20 cases) exists but has not run for the same reason.
-   Its rules are mirrored in `Tools/test_acceptance_reporting.py` (22 checks, passing) as an
-   independent cross-check against the same XML shapes.
+3. `Tests/UnityAcceptance.Tests.ps1` (Pester) exists but has not run for the same reason.
+   Its rules are mirrored in `Tools/test_acceptance_reporting.py` as an independent cross-check
+   against the same XML shapes.
 
 Neither the acceptance gates nor the game were verified by this work.
+
+## Summary-count consistency audit — 2026-11-17
+
+The repaired runner still had one hole: `Read-NUnitResults` *read* the `passed` attribute but never
+compared it with the number of test-case nodes reporting `Passed`. A summary that claimed 40 passed
+while 12 nodes passed would have been reported as a healthy run. Collected results were checked;
+their summary counts were not.
+
+**What changed.**
+
+| Requirement | Implementation |
+| --- | --- |
+| `passed` summary validated against nodes | `Compare-SummaryCount` compares each present summary attribute with the node count and fails the gate on any disagreement |
+| `skipped` / `inconclusive` likewise | Same comparison, only where the attribute is present and numeric |
+| `Warning` results represented honestly | Counted in `Warnings`, never in `Passed` or `Failed`, named under `warned:`; a warnings-only run still fails "No test case passed" |
+| Regression tests for inconsistent counts | 15 new Pester cases (35 in total) and 15 new Python cases (37 in total), both driven from the same XML shapes |
+| Duplicate / conflicting required cases | `Test-RequiredCases` reports `ambiguous` (one required name matching several distinct cases) and `conflicting` (same case with differing results) as separate failures |
+| No crash on missing attributes | Every attribute read goes through `Get-XmlAttribute`; the old code called `GetAttribute` *before* `HasAttribute`, so a summary without `total` threw under `Set-StrictMode` |
+
+**The rule, precisely.** For each summary attribute — `total`, `passed`, `failed`, `skipped`,
+`inconclusive`, `warnings`, `testcasecount` — when the attribute is *present and numeric* and differs
+from the count of matching test-case nodes, the gate fails with
+`Summary <label> (<n>) disagrees with the <m> <label> test-case node(s).`
+When it is absent, blank, or non-numeric, **no claim is made**: no problem is raised and no zero is
+imputed. A missing attribute is never silently treated as zero.
+
+**Required cases.** Matching is by substring on `name`; zero matches is `absent`, more than one
+distinct name is `ambiguous`, more than one distinct result is `conflicting` (a `Passed` copy never
+wins by document order), and a single non-`Passed` case is reported as `did not pass [Outcome]`.
+A repeated identical node is recorded as a `Duplicate test-case name(s)` problem and still has to pass.
+
+**Executed here.**
+
+- `bash Tools/UnityValidation/verify.sh` → exit 0, `Ran 56 tests ... OK`,
+  `ACCEPTANCE TOOLING VERIFIED - scripts parse and the reporting rules hold.`
+- `python -m unittest discover -s Tools` → `Ran 60 tests ... OK`.
+- `Tools/UnityValidation/check_powershell_syntax.py` → `POWERSHELL SYNTAX PASSED - 3 file(s)
+  checked by tree-sitter-powershell`, 0 files with syntax errors.
+- `bash Tools/HeadlessSim/build_sim.sh` → `veilsim: 26 sources, 0 errors, 0 warnings`,
+  `engine self-test: OK`, `RESULT SIMULATION PASSED - 138 checks passed, 0 failed`,
+  `EDITMODE RESULT executed=17 failed=0 skipped=2`.
+- `bash Tools/OfflineCompile/check_offline.sh all` → `OFFLINE TYPECHECK PASSED (mode: all)`.
+- `Tools/validate_source.py` → `PASS: 30 C# files checked; JSON/XML valid; 52 unique Unity asset GUIDs.`
+
+**Still not true, and not claimed:**
+
+1. **PowerShell's own parser did not run.** `bash Tools/UnityValidation/check_powershell.sh` →
+   `POWERSHELL SYNTAX SKIPPED - could not load the PowerShell parser here:
+   BadImageFormatException`, exit 2. The PowerShell syntax result above comes from
+   `tree-sitter-powershell` only. PowerShell's `Language.Parser` remains the authority and has never
+   executed against these files.
+2. The Pester suite has still never run: it needs `pwsh` on Windows. The 15 new Pester cases are
+   parsed, and their rules are duplicated in Python where they *do* execute, but a Pester pass is not
+   among the results above.
+3. No Unity Editor, Android SDK, or device is present, so no gate in `Run-UnityGates.ps1` was
+   executed. Our own headless simulation is not Unity.

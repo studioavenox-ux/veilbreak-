@@ -24,7 +24,18 @@ Import-Module $modulePath -Force
 
 # --- shared fixtures -------------------------------------------------------------------
 function New-NUnitXml {
-    param([Parameter(Mandatory)][object[]]$Cases)
+    <#
+    Builds NUnit XML like Unity's Test Runner writes it.
+
+    -Summary lets a test override individual summary attributes so it can deliberately claim a
+    count that the test-case nodes contradict; the gate must reject those.
+    -TestCaseCount sets testcasecount (NUnit's own case tally).
+    #>
+    param(
+        [Parameter(Mandatory)][object[]]$Cases,
+        [hashtable]$Summary,
+        [int]$TestCaseCount = -1
+    )
     $nodes = foreach ($case in $Cases) {
         $result = $case.Result
         $name = $case.Name
@@ -37,12 +48,31 @@ function New-NUnitXml {
     }
     $passed = @($Cases | Where-Object { $_.Result -eq 'Passed' }).Count
     $failed = @($Cases | Where-Object { $_.Result -eq 'Failed' }).Count
-    $skipped = @($Cases | Where-Object { $_.Result -in @('Skipped', 'Inconclusive') }).Count
+    $skipped = @($Cases | Where-Object { $_.Result -in @('Skipped') }).Count
+    $inconclusive = @($Cases | Where-Object { $_.Result -eq 'Inconclusive' }).Count
+    $warnings = @($Cases | Where-Object { $_.Result -eq 'Warning' }).Count
     $total = $Cases.Count
     $outcome = if ($failed -gt 0) { 'Failed' } else { 'Passed' }
+
+    $values = @{ total = $total; passed = $passed; failed = $failed; skipped = $skipped
+                 inconclusive = $inconclusive; warnings = $warnings }
+    if ($Summary) { foreach ($key in $Summary.Keys) { $values[$key] = $Summary[$key] } }
+
+    # Required attributes always appear; the optional ones appear only when the caller supplies or
+    # the case nodes need them, so "absent attribute makes no claim" can be exercised.
+    $attributes = " total=`"$($values.total)`" passed=`"$($values.passed)`" failed=`"$($values.failed)`""
+    foreach ($optional in 'skipped', 'inconclusive', 'warnings') {
+        if ($Summary -and $Summary.ContainsKey($optional)) {
+            $attributes += " $optional=`"$($values[$optional])`""
+        } elseif (-not $Summary -and $values[$optional] -gt 0) {
+            $attributes += " $optional=`"$($values[$optional])`""
+        }
+    }
+    if ($TestCaseCount -ge 0) { $attributes += " testcasecount=`"$TestCaseCount`"" }
+
     @"
 <?xml version="1.0" encoding="utf-8"?>
-<test-run id="2" testcasecount="$total" total="$total" passed="$passed" failed="$failed" skipped="$skipped" inconclusive="0" result="$outcome">
+<test-run id="2"$attributes result="$outcome">
   <test-suite type="TestSuite" name="Veilbreak">
     $($nodes -join "`n")
   </test-suite>
@@ -59,8 +89,12 @@ function Save-Xml {
 
 $script:tempFiles = New-Object System.Collections.Generic.List[string]
 function New-Results {
-    param([Parameter(Mandatory)][object[]]$Cases)
-    $path = Save-Xml (New-NUnitXml -Cases $Cases)
+    param(
+        [Parameter(Mandatory)][object[]]$Cases,
+        [hashtable]$Summary,
+        [int]$TestCaseCount = -1
+    )
+    $path = Save-Xml (New-NUnitXml -Cases $Cases -Summary $Summary -TestCaseCount $TestCaseCount)
     $script:tempFiles.Add($path)
     return Read-NUnitResults -Path $path
 }
@@ -202,6 +236,7 @@ Test-Case 'A required encounter case that is absent fails' {
     $check = Test-RequiredCases -Results $results -Required $encounterCases
     Assert-Equal 'FAIL' $check.State 'a missing case is a failure, not an omission'
     Assert-Match $check.Detail ([regex]::Escape($encounterCases[0]))
+    Assert-Equal 1 $check.Missing.Count 'the absent case must be listed by name' 
 }
 
 Test-Case 'A required encounter case that was skipped fails' {
@@ -257,6 +292,148 @@ Test-Case 'The manual checklist is reported as not executed, not as passed' {
     $report = Format-GateReport -Rows $rows -IncludeManualChecklist
     Assert-Match $report 'MANUAL:\s+the manual Editor/mobile acceptance checklist.*NOT executed'
     Assert-NotMatch $report 'MANUAL:\s*PASS'
+}
+
+# --- summary-vs-node consistency (final audit) -----------------------------------------
+Test-Case 'An inflated passed summary fails the gate' {
+    $results = New-Results -Cases @(@{ Name = 'Only'; Result = 'Passed' }) `
+        -Summary @{ total = 1; passed = 9; failed = 0 }
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'Summary passed \(9\)' }).Count -eq 1) `
+        'passed must be compared against the case nodes, not merely required'
+    $gate = Test-NUnitGate -Results $results -ExitCode 0
+    Assert-Equal 'FAIL' $gate.State
+}
+
+Test-Case 'A deflated passed summary fails the gate' {
+    $results = New-Results -Cases @(
+        @{ Name = 'A'; Result = 'Passed' }
+        @{ Name = 'B'; Result = 'Passed' }
+    ) -Summary @{ total = 2; passed = 1; failed = 0 }
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'A consistent summary is accepted' {
+    $results = New-Results -Cases @(
+        @{ Name = 'A'; Result = 'Passed' }
+        @{ Name = 'B'; Result = 'Passed' }
+    )
+    Assert-Equal 0 $results.Problems.Count
+    Assert-Equal 'PASS' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'An inconsistent skipped summary fails the gate' {
+    $results = New-Results -Cases @(
+        @{ Name = 'A'; Result = 'Passed' }
+        @{ Name = 'B'; Result = 'Skipped' }
+    ) -Summary @{ total = 2; passed = 1; failed = 0; skipped = 0 }
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'Summary skipped' }).Count -eq 1)
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'An inconsistent inconclusive summary fails the gate' {
+    $results = New-Results -Cases @(
+        @{ Name = 'A'; Result = 'Passed' }
+        @{ Name = 'B'; Result = 'Inconclusive' }
+    ) -Summary @{ total = 2; passed = 1; failed = 0; inconclusive = 5 }
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'Summary inconclusive' }).Count -eq 1)
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'Absent optional summary attributes make no claim' {
+    # "where available": older NUnit omits skipped/inconclusive and that is not an inconsistency.
+    $results = New-Results -Cases @(
+        @{ Name = 'A'; Result = 'Passed' }
+        @{ Name = 'B'; Result = 'Skipped' }
+        @{ Name = 'C'; Result = 'Inconclusive' }
+    ) -Summary @{ total = 3; passed = 1; failed = 0 }
+    Assert-Equal 0 $results.Problems.Count
+    Assert-Equal 'PASS' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'An inconsistent warnings summary fails the gate' {
+    $results = New-Results -Cases @(
+        @{ Name = 'A'; Result = 'Passed' }
+        @{ Name = 'W'; Result = 'Warning' }
+    ) -Summary @{ total = 2; passed = 1; failed = 0; warnings = 0 }
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'Summary warnings' }).Count -eq 1)
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'A non-numeric summary attribute makes no claim' {
+    $results = New-Results -Cases @(@{ Name = 'A'; Result = 'Passed' }) `
+        -Summary @{ total = 1; passed = 'many'; failed = 0 }
+    Assert-Equal 0 $results.Problems.Count
+    Assert-Equal 'PASS' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'An inconsistent testcasecount fails the gate' {
+    $results = New-Results -Cases @(
+        @{ Name = 'A'; Result = 'Passed' }
+        @{ Name = 'B'; Result = 'Passed' }
+    ) -TestCaseCount 7
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'testcasecount \(7\)' }).Count -eq 1)
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+# --- Warning results ------------------------------------------------------------------
+Test-Case 'A warning is counted separately and named, not dropped' {
+    $results = New-Results -Cases @(
+        @{ Name = 'Fine'; Result = 'Passed' }
+        @{ Name = 'Warned'; Result = 'Warning' }
+    )
+    Assert-Equal 1 $results.Warnings 'warnings are pass-like and counted separately'
+    Assert-Equal 1 $results.Passed
+    Assert-Equal 0 $results.Failed 'a Warning must not be treated as a failure'
+    $gate = Test-NUnitGate -Results $results -ExitCode 0
+    Assert-Equal 'PASS' $gate.State
+    Assert-Match $gate.Detail 'warned: Warned'
+}
+
+Test-Case 'A run of only warnings does not satisfy the pass requirement' {
+    $results = New-Results -Cases @(@{ Name = 'Warned'; Result = 'Warning' })
+    $gate = Test-NUnitGate -Results $results -ExitCode 0
+    Assert-Equal 'FAIL' $gate.State
+    Assert-Match $gate.Detail 'No test case passed'
+}
+
+# --- duplicate and conflicting required cases ------------------------------------------
+Test-Case 'Duplicate identical case nodes are detected' {
+    $results = New-Results -Cases @(
+        @{ Name = 'Same.Name'; Result = 'Passed' }
+        @{ Name = 'Same.Name'; Result = 'Passed' }
+    )
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'Duplicate test-case name' }).Count -eq 1)
+    Assert-Equal 'FAIL' (Test-NUnitGate -Results $results -ExitCode 0).State
+}
+
+Test-Case 'A required case with conflicting results fails' {
+    $cases = @(New-EncounterCases)
+    $cases += @{ Name = "X.$($encounterCases[1])"; Result = 'Failed' }
+    $results = New-Results -Cases $cases
+    $check = Test-RequiredCases -Results $results -Required $encounterCases
+    Assert-Equal 'FAIL' $check.State 'a passed copy must not win over a failed one'
+    Assert-Equal 1 $check.Conflicting.Count
+}
+
+Test-Case 'A required case matching two distinct cases is ambiguous' {
+    $cases = @(New-EncounterCases)
+    $cases += @{ Name = "Y.$($encounterCases[0])"; Result = 'Passed' }
+    $results = New-Results -Cases $cases
+    $check = Test-RequiredCases -Results $results -Required $encounterCases
+    Assert-Equal 'FAIL' $check.State 'two distinct cases cannot both prove one required case'
+    Assert-Equal 1 $check.Ambiguous.Count
+}
+
+Test-Case 'A duplicated required case with the same result still passes the requirement' {
+    $cases = @(New-EncounterCases)
+    $cases += @{ Name = "X.$($encounterCases[0])"; Result = 'Passed' }
+    $results = New-Results -Cases $cases
+    $check = Test-RequiredCases -Results $results -Required $encounterCases
+    Assert-Equal 'PASS' $check.State
+    Assert-Equal 0 $check.Ambiguous.Count
+    Assert-Equal 0 $check.Conflicting.Count
+    Assert-True (@($results.Problems | Where-Object { $_ -match 'Duplicate test-case name' }).Count -eq 1) `
+        'the duplicate node is still surfaced by the parser'
 }
 
 # --- exit codes of the runner ----------------------------------------------------------
