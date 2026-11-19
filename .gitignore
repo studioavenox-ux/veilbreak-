@@ -112,3 +112,6 @@ InitTestScene*.unity*
 .venv/
 __pycache__/
 *.pyc
+
+# Offline typecheck toolchain (downloaded SDKs, engine sources, build output).
+Tools/.toolchain/

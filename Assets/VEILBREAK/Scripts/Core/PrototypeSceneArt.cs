@@ -127,10 +127,24 @@ namespace Veilbreak
             var reactive = group.gameObject.AddComponent<VeilReactiveObject>(); reactive.ActiveState = state; objects.Add(reactive);
             return group;
         }
+        // Collision shapes come from ArenaLayout; the sim and the PlayMode tests read the same data.
+        Transform ReactiveStructureGroup(ReactiveStructure structure, Transform parent, Material mat,
+            List<VeilReactiveObject> objects)
+        {
+            var group = Reactive(structure.Name, parent, structure.State, objects);
+            for (int i = 0; i < structure.Boxes.Length; i++)
+            {
+                var shape = structure.Boxes[i];
+                Box(shape.Name, group, shape.Center, shape.Size, mat, true);
+            }
+            return group;
+        }
         public List<VeilReactiveObject> Courtyard(Transform parent)
         {
             var world = art.Group("Veil Arena / ruined courtyard", parent, Vector3.zero);
-            Box("Shared courtyard foundation", world, new Vector3(0,-.5f,0), new Vector3(32,1,32), stone, true);
+            // Every solid box below is positioned from ArenaLayout so the simulation cannot drift from it.
+            var objects = new List<VeilReactiveObject>();
+            Box(ArenaLayout.Floor.Name, world, ArenaLayout.Floor.Center, ArenaLayout.Floor.Size, stone, true);
             // Offset stonework, subtly varied by a deterministic pattern, combined into just two cosmetic meshes.
             // The common floor collider remains smooth and unchanged for movement/shift safety.
             for(int variant=0;variant<2;variant++)
@@ -150,17 +164,19 @@ namespace Veilbreak
             for(int side=0;side<4;side++)
             {
                 var wall = art.Group("Courtyard broken parapet", world, Vector3.zero); wall.localRotation=Quaternion.Euler(0,side*90,0);
-                Box("Boundary stone", wall, new Vector3(0,1.0f,16), new Vector3(33,2,.8f), stone, true);
+                var boundary = ArenaLayout.ParapetStone;
+                Box(boundary.Name, wall, boundary.Center, boundary.Size, stone, true);
                 for(int i=0;i<12;i++)
                     Part("Broken coping block", wall, new Vector3(-15+i*2.7f,2.0f+(i%3)*.08f,16), new Vector3(2.2f,.3f+(i%3)*.14f,1.05f), trim, new Vector3(0,(i%3-1)*6,0));
             }
-            for(int i=0;i<8;i++)
+            for(int i=0;i<ArenaLayout.Piers.Length;i++)
             {
-                float a=(i*45+22.5f)*Mathf.Deg2Rad;
-                var column=art.Group("Varied ruined pier",world,new Vector3(Mathf.Sin(a)*13.8f,0,Mathf.Cos(a)*13.8f));
-                float h= i%3==0 ? 2.0f : i%3==1 ? 3.6f : 4.7f;
-                Box("Pier plinth",column,new Vector3(0,.22f,0),new Vector3(1.7f,.44f,1.7f),trim,true);
-                Box("Pier collision",column,new Vector3(0,h*.5f,0),new Vector3(.86f,h,.86f),stone,true);
+                var pier=ArenaLayout.Piers[i];
+                var column=art.Group("Varied ruined pier",world,pier.Origin);
+                float h=pier.Height;
+                // Collision is arena-space (see ArenaLayout); only the decorative drums ride the column group.
+                Box(pier.Plinth.Name,world,pier.Plinth.Center,pier.Plinth.Size,trim,true);
+                Box(pier.Box.Name,world,pier.Box.Center,pier.Box.Size,stone,true);
                 for(int j=0;j<Mathf.FloorToInt(h/.65f);j++)
                     Part("Masonry drum",column,new Vector3(0,.64f+j*.65f,0),new Vector3(1.15f,.61f,1.15f),stone,new Vector3(0,j%2*10,0));
                 Part("Fractured capital",column,new Vector3(.08f,h+.12f,-.04f),new Vector3(1.5f,.33f,1.45f),trim,new Vector3(0,i*13,5));
@@ -168,9 +184,9 @@ namespace Veilbreak
             Arch(world,-14,4.7f,false); Arch(world,14,6.0f,true);
             // A western fallen lintel and eastern crystal reliquary are recognizable, grounded landmarks.
             Part("Fallen western lintel",world,new Vector3(-12,.55f,-9),new Vector3(3.6f,.8f,1.1f),trim,new Vector3(0,28,5));
-            Box("Reliquary pedestal",world,new Vector3(12,.6f,10),new Vector3(1.5f,1.2f,1.5f),trim,true);
+            var pedestal = ArenaLayout.ReliquaryPedestal;
+            Box(pedestal.Name,world,pedestal.Center,pedestal.Size,trim,true);
             Shard("Reliquary crystal",world,new Vector3(12,2.0f,10),new Vector3(.55f,1.7f,.55f),Energy);
-            var objects=new List<VeilReactiveObject>();
             var living=Reactive("Living / sheltered gardens",world,VeilState.Living,objects);
             var broken=Reactive("Broken / crystal ruptures",world,VeilState.Broken,objects);
             foreach(int side in new[]{-1,1})
@@ -187,22 +203,19 @@ namespace Veilbreak
                 }
             }
             // Preserve the original gate/platform footprints and low step height; solid pieces are real BoxColliders.
-            var livingGate=Reactive("Living / western standing masonry",world,VeilState.Living,objects);
-            var brokenGate=Reactive("Broken / eastern fractured masonry",world,VeilState.Broken,objects);
-            Box("Living route cover",livingGate,new Vector3(-7,1,1),new Vector3(1.4f,2,5),stone,true);
-            Part("Living cover coping",livingGate,new Vector3(-7,2.1f,1),new Vector3(1.6f,.2f,5.1f),trim);
-            // Three unequal chunks replace a single debug block, with visible and physical gaps.
-            for(int i=0;i<3;i++)
+            var livingGate=ReactiveStructureGroup(ArenaLayout.LivingRouteCover,world,stone,objects);
+            var brokenGate=ReactiveStructureGroup(ArenaLayout.BrokenRouteCover,world,stone,objects);
+            var livingCover=ArenaLayout.LivingRouteCover.Boxes[0];
+            Part("Living cover coping",livingGate,new Vector3(livingCover.Center.x,livingCover.Top+.1f,livingCover.Center.z),
+                new Vector3(livingCover.Size.x+.2f,.2f,livingCover.Size.z+.1f),trim);
+            // Ruptured seams sit on top of each chunk; their heights come from the layout, not a loop guess.
+            for(int i=0;i<ArenaLayout.BrokenRouteCover.Boxes.Length;i++)
             {
-                float h=1.4f+i*.3f;
-                Box("Broken route stone chunk",brokenGate,new Vector3(7,h*.5f,-.65f+i*1.65f),new Vector3(1.4f,h,1.5f),stone,true);
-                Shard("Ruptured cover seam",brokenGate,new Vector3(7,h+.22f,-.65f+i*1.65f),new Vector3(.25f,.65f,.35f),violet);
+                var chunk=ArenaLayout.BrokenRouteCover.Boxes[i];
+                Shard("Ruptured cover seam",brokenGate,new Vector3(chunk.Center.x,chunk.Top+.22f,chunk.Center.z),new Vector3(.25f,.65f,.35f),violet);
             }
-            var livingPlatform=Reactive("Living / intact western terrace",world,VeilState.Living,objects);
-            Box("Intact stepping terrace",livingPlatform,new Vector3(-10,.2f,-5),new Vector3(4,.4f,4),trim,true);
-            var brokenPlatform=Reactive("Broken / fractured eastern terrace",world,VeilState.Broken,objects);
-            for(int i=0;i<3;i++)
-                Box("Separated terrace slab",brokenPlatform,new Vector3(8.65f+i*1.35f,.2f,6+(i==1?.17f:0)),new Vector3(1.2f,.4f,3.7f),stone,true);
+            var livingPlatform=ReactiveStructureGroup(ArenaLayout.LivingTerrace,world,trim,objects);
+            var brokenPlatform=ReactiveStructureGroup(ArenaLayout.BrokenTerrace,world,stone,objects);
             Shard("Terrace edge crystal",brokenPlatform,new Vector3(11.4f,.85f,7.5f),new Vector3(.3f,1.1f,.3f),violet);
             return objects;
         }
